@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"gorm.io/datatypes"
@@ -243,7 +244,11 @@ func sendTestNotification(ctx context.Context, cfg models.NotificationConfig, fa
 		}
 		smtp, from := notifications.ResolveEmail(ec)
 		subject := "PR Reviewer — test notification"
-		body := notifications.RenderTemplate(notifications.OrDefault(ec.Template, "<p>This is a test notification from <strong>PR Reviewer</strong>.</p>"), vars)
+		body := notifications.RenderTest()
+		if strings.TrimSpace(ec.Template) != "" {
+			// Honour an admin-configured custom body, wrapped in the branded layout.
+			body = notifications.WrapCustom(subject, "Test notification", notifications.RenderTemplate(ec.Template, vars))
+		}
 		return notifications.SendEmail(ctx, smtp, from, to, subject, body)
 	case "webhook":
 		var wc notifications.WebhookChannelConfig

@@ -1,0 +1,30 @@
+{{define "invite.html" -}}
+<h1 style="margin:0 0 16px;color:#18181b;font-size:22px;font-weight:700;letter-spacing:-0.02em;">You've been invited to {{appName}}</h1>
+<p style="margin:0 0 16px;color:#3f3f46;font-size:15px;line-height:1.6;">
+  <strong>{{.InvitedBy}}</strong> has invited you to join <strong>{{appName}}</strong> as a <strong>{{.Role}}</strong>.
+</p>
+<p style="margin:0 0 28px;color:#3f3f46;font-size:15px;line-height:1.6;">
+  Click the button below to accept your invitation and set up your account.
+</p>
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px;">
+  <tr>
+    <td style="border-radius:8px;background-color:#18181b;">
+      <a href="{{.Link}}" style="display:inline-block;padding:13px 32px;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;">Accept invitation</a>
+    </td>
+  </tr>
+</table>
+
+<p style="margin:0 0 8px;color:#71717a;font-size:13px;line-height:1.6;">
+  This invitation expires on <strong>{{.Expires}}</strong>.
+</p>
+<p style="margin:0 0 4px;color:#a1a1aa;font-size:13px;line-height:1.6;">
+  If the button doesn't work, copy and paste this link into your browser:
+</p>
+<p style="margin:0 0 16px;word-break:break-all;">
+  <a href="{{.Link}}" style="color:#71717a;font-size:12px;text-decoration:underline;">{{.Link}}</a>
+</p>
+<p style="margin:0;color:#a1a1aa;font-size:13px;line-height:1.6;">
+  If you didn't expect this email, you can safely ignore it.
+</p>
+{{- end}}

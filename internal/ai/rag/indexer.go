@@ -28,6 +28,16 @@ func (idx *Indexer) EmbedderID() string { return idx.embedder.ID() }
 // EmbedderDim returns the configured embedder's expected output dimension (0 if unknown).
 func (idx *Indexer) EmbedderDim() int { return idx.embedder.Dim() }
 
+// Ready reports whether the embedder currently has a provider it can resolve.
+// Embedders backed by a fixed provider (openai, ollama) are always ready;
+// only a DynamicEmbedder (resolved from the DB per-call) can report false.
+func (idx *Indexer) Ready() bool {
+	if rc, ok := idx.embedder.(interface{ Ready() bool }); ok {
+		return rc.Ready()
+	}
+	return true
+}
+
 // PurgeRepo deletes every embedding stored for a repo. Used when the embedding
 // provider/model changes and the old vectors are no longer comparable.
 func (idx *Indexer) PurgeRepo(ctx context.Context, repoID uint) error {

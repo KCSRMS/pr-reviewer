@@ -30,6 +30,9 @@ type Config struct {
 	InviteTTLHours int // invite link lifetime in hours (default 168 = 7 days)
 	// API token policy
 	APITokenMaxDays int // maximum token lifetime in days; 0 = no limit (default)
+	// Email branding (applied to all outgoing emails via notifications.ConfigureBrand)
+	EmailLogoURL      string // absolute logo URL; defaults to FrontendURL + /logo-horizontal.png
+	EmailSupportEmail string // support address shown in the email footer; optional
 }
 
 func Load() (*Config, error) {
@@ -52,6 +55,8 @@ func Load() (*Config, error) {
 		JWTTTLHours:        getEnvInt("JWT_TTL_HOURS", 24),
 		InviteTTLHours:     getEnvInt("INVITE_TTL_HOURS", 7*24),
 		APITokenMaxDays:    getEnvInt("API_TOKEN_MAX_DAYS", 0),
+		EmailLogoURL:       getEnv("EMAIL_LOGO_URL", ""),
+		EmailSupportEmail:  getEnv("EMAIL_SUPPORT_EMAIL", ""),
 	}, nil
 }
 

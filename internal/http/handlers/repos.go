@@ -16,9 +16,10 @@ import (
 )
 
 type RepoHandler struct {
-	db            *gorm.DB
-	encryptionKey string
-	enqueuer      jobs.JobEnqueuer // optional; nil if RAG/indexing is disabled
+	db             *gorm.DB
+	encryptionKey  string
+	enqueuer       jobs.JobEnqueuer // optional; nil if no job queue is configured
+	embeddingReady func() bool      // optional; reports live whether an embedding provider is configured
 }
 
 func NewRepoHandler(db *gorm.DB, encryptionKey string) *RepoHandler {
@@ -29,6 +30,19 @@ func NewRepoHandler(db *gorm.DB, encryptionKey string) *RepoHandler {
 func (h *RepoHandler) WithEnqueuer(e jobs.JobEnqueuer) *RepoHandler {
 	h.enqueuer = e
 	return h
+}
+
+// WithEmbeddingReadyCheck attaches a live check for embedding-provider
+// availability, evaluated per-request rather than once at startup — so
+// enabling/editing a provider in the UI takes effect without a restart.
+func (h *RepoHandler) WithEmbeddingReadyCheck(fn func() bool) *RepoHandler {
+	h.embeddingReady = fn
+	return h
+}
+
+// indexingAvailable reports whether an indexing job can be enqueued right now.
+func (h *RepoHandler) indexingAvailable() bool {
+	return h.enqueuer != nil && (h.embeddingReady == nil || h.embeddingReady())
 }
 
 func (h *RepoHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +103,7 @@ func (h *RepoHandler) Update(w http.ResponseWriter, r *http.Request) {
 	h.db.WithContext(r.Context()).First(&repo, id)
 
 	// When a repo is first enabled and RAG indexing is available, kick off full indexing.
-	if body.Enabled != nil && *body.Enabled && !before.Enabled && h.enqueuer != nil {
+	if body.Enabled != nil && *body.Enabled && !before.Enabled && h.indexingAvailable() {
 		_, _ = h.enqueuer.Insert(r.Context(), jobs.IndexRepoJobArgs{
 			Owner:  repo.Owner,
 			Repo:   repo.Name,
@@ -119,7 +133,7 @@ func (h *RepoHandler) Index(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if h.enqueuer == nil {
+	if !h.indexingAvailable() {
 		writeError(w, http.StatusServiceUnavailable, "indexing not available (no embedding provider configured)")
 		return
 	}

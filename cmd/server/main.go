@@ -84,7 +84,7 @@ func main() {
 		riverClient  *river.Client[pgx.Tx]
 		deliveryRepo *repo.DeliveryRepo
 		gormDB       *gorm.DB
-		indexer      *rag.Indexer // non-nil when an embedding provider is configured
+		indexer      *rag.Indexer // non-nil whenever a DB is configured; embedder availability is resolved dynamically
 	)
 
 	if cfg.DatabaseURL != "" {
@@ -161,20 +161,23 @@ func main() {
 		loadDBProvidersIntoRegistry(gormDB, cfg.EncryptionKey, registry, log)
 		loadDBGithubSecrets(gormDB, cfg)
 
-		if dbEmbedder := buildEmbedderFromDB(gormDB, cfg.EncryptionKey, log); dbEmbedder != nil {
-			embedder = dbEmbedder
-		}
-
-		// Wire RAG retriever + indexer when embedder is available.
-		var retriever *rag.PgvectorRetriever
-		if embedder != nil {
-			retriever = rag.NewPgvectorRetriever(gormDB, embedder)
-			indexer = rag.NewIndexer(gormDB, embedder)
-			aiService = ai.NewReviewer(cfg, log, embedder, retriever, orchestrator)
-		}
+		// Resolved from the DB on every use (not just once at boot), so
+		// enabling/editing an embedding provider through the UI takes effect
+		// immediately — no server restart required.
+		embedder = embeddings.NewDynamicEmbedder(func() (embeddings.Embedder, error) {
+			return buildEmbedderFromDB(gormDB, cfg.EncryptionKey)
+		})
+		retriever := rag.NewPgvectorRetriever(gormDB, embedder)
+		indexer = rag.NewIndexer(gormDB, embedder)
+		aiService = ai.NewReviewer(cfg, log, embedder, retriever, orchestrator)
 
 		// Key used to encrypt channel secrets (SMTP password, webhook secret) at rest.
 		notifications.SetEncryptionKey(cfg.EncryptionKey)
+		notifications.ConfigureBrand(notifications.Brand{
+			AppURL:       cfg.FrontendURL,
+			LogoURL:      cfg.EmailLogoURL,
+			SupportEmail: cfg.EmailSupportEmail,
+		})
 		notifService := notifications.NewService(gormDB)
 
 		workers := river.NewWorkers()
@@ -208,18 +211,15 @@ func main() {
 			RequiredOrg:   cfg.RequiredGithubOrg,
 			EncryptionKey: cfg.EncryptionKey,
 		})
-		var indexAllReposWorker *jobs.IndexAllReposWorker
-		if indexer != nil {
-			river.AddWorker(workers, &jobs.IndexRepoWorker{
-				TokenCache:    tokenCache,
-				DB:            gormDB,
-				Indexer:       indexer,
-				Log:           log,
-				EncryptionKey: cfg.EncryptionKey,
-			})
-			indexAllReposWorker = &jobs.IndexAllReposWorker{DB: gormDB, Log: log}
-			river.AddWorker(workers, indexAllReposWorker)
-		}
+		river.AddWorker(workers, &jobs.IndexRepoWorker{
+			TokenCache:    tokenCache,
+			DB:            gormDB,
+			Indexer:       indexer,
+			Log:           log,
+			EncryptionKey: cfg.EncryptionKey,
+		})
+		indexAllReposWorker := &jobs.IndexAllReposWorker{DB: gormDB, Log: log}
+		river.AddWorker(workers, indexAllReposWorker)
 
 		// Email digests: daily and weekly cadences. The worker only emails configs
 		// whose digest setting matches the period, so both are safe to always schedule.
@@ -245,16 +245,15 @@ func main() {
 			},
 			&river.PeriodicJobOpts{RunOnStart: false},
 		)
-		periodicJobs := []*river.PeriodicJob{dailyDigestPeriodic, weeklyDigestPeriodic, orgCheckPeriodic}
-		if indexer != nil {
-			// 9.3: Weekly full re-index of all enabled repositories.
-			periodicJobs = append(periodicJobs, river.NewPeriodicJob(
+		// 9.3: Weekly full re-index of all enabled repositories.
+		periodicJobs := []*river.PeriodicJob{dailyDigestPeriodic, weeklyDigestPeriodic, orgCheckPeriodic,
+			river.NewPeriodicJob(
 				river.PeriodicInterval(7*24*time.Hour),
 				func() (river.JobArgs, *river.InsertOpts) {
 					return jobs.IndexAllReposJobArgs{}, nil
 				},
 				&river.PeriodicJobOpts{RunOnStart: false},
-			))
+			),
 		}
 
 		riverClient, err = river.NewClient(riverpgxv5.New(dbPool), &river.Config{
@@ -273,9 +272,7 @@ func main() {
 		log.Info("river workers started")
 
 		// Wire enqueuer for index fan-out worker now that riverClient exists.
-		if indexAllReposWorker != nil {
-			indexAllReposWorker.Enqueuer = riverClient
-		}
+		indexAllReposWorker.Enqueuer = riverClient
 
 		// Poll River queue depth for Prometheus every 30 s.
 		go pollQueueDepth(ctx, gormDB, log)
@@ -310,8 +307,8 @@ func main() {
 			cfg.RequiredGithubOrg, cfg.JWTTTLHours, cfg.EncryptionKey,
 		)
 		repoHandler := handlers.NewRepoHandler(gormDB, cfg.EncryptionKey)
-		if riverClient != nil && indexer != nil {
-			repoHandler = repoHandler.WithEnqueuer(riverClient)
+		if riverClient != nil {
+			repoHandler = repoHandler.WithEnqueuer(riverClient).WithEmbeddingReadyCheck(indexer.Ready)
 		}
 		routerCfg.RepoHandler = repoHandler
 		routerCfg.ReviewHandler = handlers.NewReviewHandler(gormDB)
@@ -506,9 +503,10 @@ func pollQueueDepth(ctx context.Context, gormDB *gorm.DB, log *logger.Logger) {
 	}
 }
 
-// buildEmbedderFromDB finds the first ProviderConfig with SupportsEmbeddings=true and
-// builds an embedder from it. Returns nil if none is found or the key cannot be decrypted.
-func buildEmbedderFromDB(gormDB *gorm.DB, encKey string, log *logger.Logger) embeddings.Embedder {
+// buildEmbedderFromDB finds the first ProviderConfig with SupportsEmbeddings=true
+// and builds an embedder from it. Called by a DynamicEmbedder on every use (not
+// just once at boot), so it must stay cheap and must not log on every call.
+func buildEmbedderFromDB(gormDB *gorm.DB, encKey string) (embeddings.Embedder, error) {
 	var prov struct {
 		ID              uint
 		Type            string
@@ -519,7 +517,7 @@ func buildEmbedderFromDB(gormDB *gorm.DB, encKey string, log *logger.Logger) emb
 	if err := gormDB.Table("provider_configs").
 		Where("supports_embeddings = true").
 		First(&prov).Error; err != nil {
-		return nil // no embedding provider in DB
+		return nil, embeddings.ErrNoProviderConfigured
 	}
 	apiKey := prov.APIKeyEncrypted
 	if apiKey != "" && encKey != "" {
@@ -533,17 +531,16 @@ func buildEmbedderFromDB(gormDB *gorm.DB, encKey string, log *logger.Logger) emb
 		if model == "" {
 			model = "text-embedding-3-small"
 		}
-		log.Info("RAG enabled from DB provider", "type", prov.Type, "embedding_model", model)
-		return embeddings.NewOpenAIEmbedder(apiKey, model)
+		return embeddings.NewOpenAIEmbedder(apiKey, model), nil
 	case "ollama":
 		model := prov.EmbeddingModel
 		if model == "" {
 			model = "nomic-embed-text"
 		}
-		log.Info("RAG enabled from DB provider", "type", "ollama", "embedding_model", model)
-		return embeddings.NewOllamaEmbedder(prov.BaseURL, model)
+		return embeddings.NewOllamaEmbedder(prov.BaseURL, model), nil
+	default:
+		return nil, fmt.Errorf("embedding: unsupported provider type %q", prov.Type)
 	}
-	return nil
 }
 
 // loadDBProvidersIntoRegistry reads provider_configs from the DB and registers them.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -116,9 +117,13 @@ func (s *notifService) NotifyAssignment(ctx context.Context, repoID uint, assign
 				}
 				if len(to) > 0 {
 					smtp, from := ResolveEmail(ec)
-					_ = SendEmail(ctx, smtp, from, to,
-						fmt.Sprintf("Review requested: %s", prTitle),
-						RenderTemplate(OrDefault(ec.Template, defaultSlackAssignmentTpl), vars))
+					subject := fmt.Sprintf("Review requested: %s", prTitle)
+					body := RenderAssignment(assignee, prTitle, prURL, summary)
+					if strings.TrimSpace(ec.Template) != "" {
+						// Honour an admin-configured custom body, wrapped in the branded layout.
+						body = WrapCustom(subject, prTitle, RenderTemplate(ec.Template, vars))
+					}
+					_ = SendEmail(ctx, smtp, from, to, subject, body)
 				}
 			}
 		case "webhook":
@@ -151,9 +156,13 @@ func (s *notifService) NotifyReviewComplete(ctx context.Context, repoID uint, pr
 			if json.Unmarshal(cfg.Config, &ec) == nil && len(ec.To) > 0 &&
 				shouldNotifyComplete(ec.Events, ec.ScoreThreshold, score, isReReview) {
 				smtp, from := ResolveEmail(ec)
-				_ = SendEmail(ctx, smtp, from, ec.To,
-					fmt.Sprintf("[PR Reviewer] %s — %d/100", prTitle, score),
-					RenderTemplate(OrDefault(ec.Template, defaultEmailBodyTpl), vars))
+				subject := fmt.Sprintf("[PR Reviewer] %s — %d/100", prTitle, score)
+				body := RenderReviewComplete(prTitle, prURL, summary, score, isReReview)
+				if strings.TrimSpace(ec.Template) != "" {
+					// Honour an admin-configured custom body, wrapped in the branded layout.
+					body = WrapCustom(subject, prTitle, RenderTemplate(ec.Template, vars))
+				}
+				_ = SendEmail(ctx, smtp, from, ec.To, subject, body)
 			}
 		case "webhook":
 			var wc WebhookChannelConfig

@@ -1,0 +1,66 @@
+{{define "base.html" -}}
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{{.Title}}</title>
+</head>
+<body style="margin:0;padding:0;width:100%;background-color:#f4f4f5;-webkit-font-smoothing:antialiased;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <!-- Preheader: preview text shown in the inbox list, hidden in the body. -->
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f4f4f5;opacity:0;">{{.Preheader}}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;">
+    <tr>
+      <td align="center" style="padding:32px 12px;">
+
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e4e4e7;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:28px 40px;border-bottom:1px solid #ededf0;">
+              {{if .LogoURL -}}
+              <a href="{{.AppURL}}" style="text-decoration:none;">
+                <img src="{{.LogoURL}}" alt="{{appName}}" height="30" style="height:30px;width:auto;border:0;display:block;">
+              </a>
+              {{- else -}}
+              <a href="{{.AppURL}}" style="text-decoration:none;color:#18181b;font-size:20px;font-weight:700;letter-spacing:-0.02em;">{{appName}}</a>
+              {{- end}}
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding:36px 40px;color:#27272a;font-size:15px;line-height:1.6;">
+              {{.Content}}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 40px 32px;border-top:1px solid #ededf0;background-color:#fafafa;">
+              <p style="margin:0 0 8px;color:#71717a;font-size:13px;line-height:1.5;font-weight:600;">{{appName}}</p>
+              <p style="margin:0 0 4px;color:#a1a1aa;font-size:12px;line-height:1.5;">
+                You're receiving this email because notifications are enabled for your account.
+                {{if .AppURL}}Manage your preferences in <a href="{{.AppURL}}/settings/notifications" style="color:#71717a;text-decoration:underline;">notification settings</a>.{{end}}
+              </p>
+              {{if .SupportEmail -}}
+              <p style="margin:0 0 4px;color:#a1a1aa;font-size:12px;line-height:1.5;">
+                Questions? Reach us at <a href="mailto:{{.SupportEmail}}" style="color:#71717a;text-decoration:underline;">{{.SupportEmail}}</a>.
+              </p>
+              {{- end}}
+              <p style="margin:12px 0 0;color:#c4c4cc;font-size:11px;line-height:1.5;">&copy; {{.Year}} {{appName}}. All rights reserved.</p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+{{- end}}

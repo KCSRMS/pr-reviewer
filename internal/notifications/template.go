@@ -4,9 +4,9 @@ import "strings"
 
 // Event constants used in NotificationConfig.Config["events"].
 const (
-	EventAssignment         = "assignment"
-	EventReviewComplete     = "review_complete"
-	EventReReview           = "re_review"
+	EventAssignment          = "assignment"
+	EventReviewComplete      = "review_complete"
+	EventReReview            = "re_review"
 	EventScoreBelowThreshold = "score_below_threshold"
 )
 
@@ -16,7 +16,6 @@ var AllEvents = []string{EventAssignment, EventReviewComplete, EventReReview, Ev
 const (
 	defaultSlackAssignmentTpl = "👀 *Review requested* — @{{assignee}}, please review *<{{pr.url}}|{{pr.title}}>*\n> {{review.summary}}"
 	defaultSlackReviewTpl     = "✅ Review complete for *<{{pr.url}}|{{pr.title}}>* — Score: *{{review.score}}/100*\n> {{review.summary}}"
-	defaultEmailBodyTpl       = `<p>PR <a href="{{pr.url}}">{{pr.title}}</a> scored <strong>{{review.score}}/100</strong>.</p><blockquote>{{review.summary}}</blockquote><p><em>Powered by PR Reviewer</em></p>`
 )
 
 // RenderTemplate replaces {{key}} placeholders with values from vars.

@@ -254,11 +254,7 @@ func (h *InviteHandler) sendInviteEmail(ctx context.Context, email, role, invite
 
 	link := fmt.Sprintf("%s/accept-invite?token=%s", h.frontendURL, rawToken)
 	subject := fmt.Sprintf("%s invited you to PR Reviewer as %s", invitedBy, role)
-	body := fmt.Sprintf(`<p><strong>%s</strong> has invited you to join PR Reviewer as <strong>%s</strong>.</p>
-<p><a href="%s">Accept invitation</a></p>
-<p>This link expires on %s.</p>
-<p style="color:#888;font-size:0.9em">If you didn't expect this email, you can ignore it.</p>`,
-		invitedBy, role, link, expiresAt.UTC().Format("2 Jan 2006"))
+	body := notifications.RenderInvite(invitedBy, role, link, expiresAt)
 
 	for _, cfg := range cfgs {
 		var ec notifications.EmailChannelConfig

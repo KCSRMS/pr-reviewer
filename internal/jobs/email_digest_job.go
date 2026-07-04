@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -69,7 +68,7 @@ func (w *EmailDigestWorker) Work(ctx context.Context, job *river.Job[EmailDigest
 
 		smtp, from := notifications.ResolveEmail(ec)
 		subject := fmt.Sprintf("[PR Reviewer] %s digest — %d reviews", capitalize(period), len(rows))
-		if err := notifications.SendEmail(ctx, smtp, from, ec.To, subject, renderDigestHTML(period, since, rows)); err != nil {
+		if err := notifications.SendEmail(ctx, smtp, from, ec.To, subject, notifications.RenderDigest(period, since, toDigestEntries(rows))); err != nil {
 			w.Log.Error("digest email failed", "config_id", cfg.ID, "error", err)
 			continue
 		}
@@ -109,60 +108,21 @@ func (w *EmailDigestWorker) aggregate(ctx context.Context, repoID *uint, since t
 	return rows
 }
 
-func renderDigestHTML(period string, since time.Time, rows []digestRow) string {
-	var total, approvals, changes int
-	perRepo := map[string]int{}
+// toDigestEntries maps the aggregated rows to the notifications digest model,
+// which owns the branded HTML rendering.
+func toDigestEntries(rows []digestRow) []notifications.DigestEntry {
+	entries := make([]notifications.DigestEntry, 0, len(rows))
 	for _, r := range rows {
-		total += r.Score
-		switch r.Status {
-		case "APPROVE":
-			approvals++
-		case "REQUEST_CHANGES":
-			changes++
-		}
-		perRepo[r.Owner+"/"+r.RepoName]++
+		entries = append(entries, notifications.DigestEntry{
+			Owner:    r.Owner,
+			RepoName: r.RepoName,
+			PRNumber: r.PRNumber,
+			Title:    r.Title,
+			Status:   r.Status,
+			Score:    r.Score,
+		})
 	}
-	avg := 0.0
-	if len(rows) > 0 {
-		avg = float64(total) / float64(len(rows))
-	}
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, `<h2>PR Reviewer — %s digest</h2>`, capitalize(period))
-	fmt.Fprintf(&sb, `<p style="color:#666">Since %s</p>`, since.Format("2006-01-02 15:04"))
-	fmt.Fprintf(&sb, `<p><strong>%d</strong> reviews · avg score <strong>%.1f/100</strong> · %d approved · %d changes requested</p>`,
-		len(rows), avg, approvals, changes)
-
-	// Top repos.
-	if len(perRepo) > 0 {
-		repos := make([]string, 0, len(perRepo))
-		for k := range perRepo {
-			repos = append(repos, k)
-		}
-		sort.Slice(repos, func(i, j int) bool { return perRepo[repos[i]] > perRepo[repos[j]] })
-		sb.WriteString(`<p><strong>By repository:</strong> `)
-		parts := make([]string, 0, len(repos))
-		for _, k := range repos {
-			parts = append(parts, fmt.Sprintf("%s (%d)", k, perRepo[k]))
-		}
-		sb.WriteString(strings.Join(parts, ", "))
-		sb.WriteString(`</p>`)
-	}
-
-	sb.WriteString(`<table cellpadding="6" style="border-collapse:collapse;font-size:14px">`)
-	sb.WriteString(`<tr style="background:#f0f0f0"><th align="left">PR</th><th align="left">Title</th><th align="left">Status</th><th align="right">Score</th></tr>`)
-	limit := len(rows)
-	if limit > 30 {
-		limit = 30
-	}
-	for _, r := range rows[:limit] {
-		fmt.Fprintf(&sb,
-			`<tr style="border-top:1px solid #eee"><td>%s/%s#%d</td><td>%s</td><td>%s</td><td align="right">%d</td></tr>`,
-			r.Owner, r.RepoName, r.PRNumber, htmlEscape(r.Title), r.Status, r.Score)
-	}
-	sb.WriteString(`</table>`)
-	sb.WriteString(`<p style="color:#999;font-size:12px">Powered by PR Reviewer</p>`)
-	return sb.String()
+	return entries
 }
 
 func capitalize(s string) string {
@@ -170,11 +130,4 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-func htmlEscape(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	return s
 }

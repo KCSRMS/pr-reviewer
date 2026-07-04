@@ -73,6 +73,11 @@ func (w *IndexRepoWorker) Work(ctx context.Context, job *river.Job[IndexRepoJobA
 
 	w.setStatus(ctx, args.RepoID, "indexing")
 
+	if !w.Indexer.Ready() {
+		w.setStatus(ctx, args.RepoID, "error")
+		return fmt.Errorf("index repo: no embedding provider configured")
+	}
+
 	// Fail fast if the configured embedder produces a dimension the schema cannot
 	// store. Without this, every insert would be rejected by pgvector and the repo
 	// would be marked "indexed" with an empty index.
