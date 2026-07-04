@@ -78,6 +78,12 @@ func (m *mockGHClient) RequestReviewers(_ context.Context, _, _ string, _ int, _
 func (m *mockGHClient) GetFileContent(_ context.Context, _, _, _ string) (string, error) {
 	return "", nil
 }
+func (m *mockGHClient) GetFileContentAtRef(_ context.Context, _, _, _, _ string) (string, string, error) {
+	return "", "", nil
+}
+func (m *mockGHClient) UpdateFileContent(_ context.Context, _, _, _, _, _, _, _ string) (string, error) {
+	return "", nil
+}
 func (m *mockGHClient) EnsureLabel(_ context.Context, _, _, _, _, _ string) error { return nil }
 func (m *mockGHClient) AddLabelsToIssue(_ context.Context, _, _ string, _ int, _ []string) error {
 	return nil

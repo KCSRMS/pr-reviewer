@@ -135,7 +135,11 @@ type ReviewComment struct {
 	Priority   string // p0|p1|p2|p3
 	StartLine  int    `gorm:"not null;default:0"`
 	Suggestion string `gorm:"not null;default:''"`
-	CreatedAt  time.Time
+	// AppliedAt/AppliedBy record when a user committed this comment's Suggestion
+	// to the PR branch via the dashboard's one-click apply. Nil/empty means unapplied.
+	AppliedAt *time.Time
+	AppliedBy string `gorm:"not null;default:''"`
+	CreatedAt time.Time
 }
 
 // WebhookDelivery tracks processed GitHub delivery IDs to prevent duplicate reviews.

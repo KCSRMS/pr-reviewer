@@ -396,6 +396,13 @@ export function explainComment(token: string, commentID: number) {
   });
 }
 
+export function applySuggestion(token: string, commentID: number) {
+  return apiFetch<{ ok: boolean; commit_sha: string }>(`/api/reviews/comments/${commentID}/apply`, {
+    method: "POST",
+    token,
+  });
+}
+
 // --- audit log ---
 export interface AuditLogEntry {
   ID: number;
@@ -677,6 +684,8 @@ export interface ReviewComment {
   Severity: string;
   StartLine?: number;
   Suggestion?: string;
+  AppliedAt?: string;
+  AppliedBy?: string;
 }
 
 export interface Assignment {
@@ -785,6 +794,8 @@ export interface PRComment {
   priority: string;
   start_line?: number;
   suggestion?: string;
+  applied_at?: string;
+  applied_by?: string;
   has_reply: boolean;
 }
 

@@ -332,6 +332,7 @@ func main() {
 		routerCfg.NotificationHandler = handlers.NewNotificationHandler(gormDB).WithEnqueuer(riverClient)
 		routerCfg.FeedbackHandler = handlers.NewFeedbackHandler(gormDB)
 		routerCfg.ExplainHandler = handlers.NewExplainHandler(gormDB, aiService)
+		routerCfg.SuggestionHandler = handlers.NewSuggestionHandler(gormDB).WithTokenCache(tokenCache, cfg.EncryptionKey).WithEventHub(eventHub)
 		routerCfg.AuditHandler = handlers.NewAuditHandler(gormDB)
 		routerCfg.RetentionHandler = handlers.NewRetentionHandler(gormDB)
 		routerCfg.SSOHandler = handlers.NewSSOHandler(gormDB, cfg.EncryptionKey, cfg.ServerURL, cfg.FrontendURL, cfg.JWTSecret, cfg.JWTTTLHours)

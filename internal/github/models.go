@@ -21,6 +21,10 @@ type PullRequest struct {
 type GitRef struct {
 	Ref string `json:"ref"`
 	Sha string `json:"sha"`
+	// Repo is the "owner/name" full name of the repository this ref lives in.
+	// Comparing Base.Repo and Head.Repo detects a fork PR; empty means the
+	// GitHub API didn't report a repo (e.g. the fork was deleted).
+	Repo string `json:"repo"`
 }
 
 // User represents a GitHub user.

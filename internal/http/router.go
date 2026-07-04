@@ -38,6 +38,7 @@ type RouterConfig struct {
 	NotificationHandler    *handlers.NotificationHandler
 	FeedbackHandler        *handlers.FeedbackHandler
 	ExplainHandler         *handlers.ExplainHandler
+	SuggestionHandler      *handlers.SuggestionHandler
 	EventsHandler          *handlers.EventsHandler
 	AuditHandler           *handlers.AuditHandler
 	RetentionHandler       *handlers.RetentionHandler
@@ -215,6 +216,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	if cfg.ExplainHandler != nil {
 		api.HandleFunc("POST /api/reviews/comments/{id}/explain", cfg.ExplainHandler.Explain)
+	}
+	if cfg.SuggestionHandler != nil {
+		// Access control (repo membership) is enforced inside the handler, since
+		// it needs the comment's repo, not just the path — RequireRole can't see that.
+		api.HandleFunc("POST /api/reviews/comments/{id}/apply", cfg.SuggestionHandler.Apply)
 	}
 	if cfg.AuditHandler != nil {
 		adminFunc("GET /api/audit", cfg.AuditHandler.List)

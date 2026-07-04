@@ -3,12 +3,13 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { useToken } from "@/hooks/useToken";
-import { getReview, type ReviewDetail } from "@/lib/api";
+import { getReview, applySuggestion, type ReviewDetail } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { SuggestionBlock } from "@/components/suggestion-block";
+import { toast } from "sonner";
 
 function severityVariant(s: string): "default" | "destructive" | "secondary" {
   if (s === "error") return "destructive";
@@ -33,6 +34,22 @@ export default function ReviewDetailPage({ params }: { params: Promise<{ id: str
     if (!token) return;
     getReview(token, Number(id)).then(setReview).finally(() => setLoading(false));
   }, [token, id]);
+
+  async function handleApplySuggestion(commentID: number) {
+    if (!token) return;
+    try {
+      await applySuggestion(token, commentID);
+      setReview((prev) => prev && {
+        ...prev,
+        Comments: prev.Comments.map((c) =>
+          c.ID === commentID ? { ...c, AppliedAt: new Date().toISOString() } : c
+        ),
+      });
+      toast.success("Fix applied — a re-review will run automatically");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to apply fix");
+    }
+  }
 
   if (loading) return <Skeleton className="h-64 w-full" />;
   if (!review) return <p className="text-muted-foreground">Review not found.</p>;
@@ -75,7 +92,14 @@ export default function ReviewDetailPage({ params }: { params: Promise<{ id: str
                   </div>
                   <p className="text-base">{c.Body}</p>
                   {c.Suggestion && (
-                    <SuggestionBlock suggestion={c.Suggestion} line={c.Line} startLine={c.StartLine} />
+                    <SuggestionBlock
+                      suggestion={c.Suggestion}
+                      line={c.Line}
+                      startLine={c.StartLine}
+                      applied={!!c.AppliedAt}
+                      appliedBy={c.AppliedBy}
+                      onApply={() => handleApplySuggestion(c.ID)}
+                    />
                   )}
                 </li>
               ))}

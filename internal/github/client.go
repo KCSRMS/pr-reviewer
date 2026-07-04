@@ -31,6 +31,10 @@ type Client interface {
 	PostReviewCommentReply(ctx context.Context, owner, repo string, number int, inReplyTo int64, body string) error
 	// GetFileContent fetches a single file's content from the repository.
 	GetFileContent(ctx context.Context, owner, repo, path string) (string, error)
+	// GetFileContentAtRef fetches a file's content and blob SHA at a specific ref.
+	GetFileContentAtRef(ctx context.Context, owner, repo, path, ref string) (content, sha string, err error)
+	// UpdateFileContent commits new content for a file on a branch and returns the new commit SHA.
+	UpdateFileContent(ctx context.Context, owner, repo, path, branch, message, newContent, blobSHA string) (commitSHA string, err error)
 	// EnsureLabel creates a label if it doesn't exist; no-op if already present.
 	EnsureLabel(ctx context.Context, owner, repo, name, color, description string) error
 	// AddLabelsToIssue applies labels to a PR/issue by number.
@@ -78,12 +82,14 @@ func (c *clientImpl) GetPullRequest(ctx context.Context, owner, repo string, num
 		Body:   pr.GetBody(),
 		State:  pr.GetState(),
 		Base: GitRef{
-			Ref: pr.GetBase().GetRef(),
-			Sha: pr.GetBase().GetSHA(),
+			Ref:  pr.GetBase().GetRef(),
+			Sha:  pr.GetBase().GetSHA(),
+			Repo: pr.GetBase().GetRepo().GetFullName(),
 		},
 		Head: GitRef{
-			Ref: pr.GetHead().GetRef(),
-			Sha: pr.GetHead().GetSHA(),
+			Ref:  pr.GetHead().GetRef(),
+			Sha:  pr.GetHead().GetSHA(),
+			Repo: pr.GetHead().GetRepo().GetFullName(),
 		},
 		Author: User{
 			Login: pr.GetUser().GetLogin(),
@@ -373,6 +379,41 @@ func (c *clientImpl) GetFileContent(ctx context.Context, owner, repo, path strin
 		return "", err
 	}
 	return raw, nil
+}
+
+// GetFileContentAtRef fetches a file's content and blob SHA at a specific ref
+// (branch, tag, or commit SHA) — needed before UpdateFileContent, which
+// requires the current blob SHA to avoid clobbering a concurrent write.
+func (c *clientImpl) GetFileContentAtRef(ctx context.Context, owner, repo, path, ref string) (content, sha string, err error) {
+	start := time.Now()
+	fc, _, _, err := c.client.Repositories.GetContents(ctx, owner, repo, path, &github.RepositoryContentGetOptions{Ref: ref})
+	logger.ExternalCall(ctx, "github", "Repositories.GetContents", start, err, "owner", owner, "repo", repo, "path", path, "ref", ref)
+	if err != nil {
+		return "", "", err
+	}
+	raw, err := fc.GetContent()
+	if err != nil {
+		return "", "", err
+	}
+	return raw, fc.GetSHA(), nil
+}
+
+// UpdateFileContent commits new file content to a branch via the Contents API
+// and returns the new commit SHA. blobSHA must be the file's current SHA
+// (from GetFileContentAtRef) or GitHub rejects the write as a conflict.
+func (c *clientImpl) UpdateFileContent(ctx context.Context, owner, repo, path, branch, message, newContent, blobSHA string) (string, error) {
+	start := time.Now()
+	resp, _, err := c.client.Repositories.UpdateFile(ctx, owner, repo, path, &github.RepositoryContentFileOptions{
+		Message: &message,
+		Content: []byte(newContent),
+		SHA:     &blobSHA,
+		Branch:  &branch,
+	})
+	logger.ExternalCall(ctx, "github", "Repositories.UpdateFile", start, err, "owner", owner, "repo", repo, "path", path, "branch", branch)
+	if err != nil {
+		return "", err
+	}
+	return resp.GetSHA(), nil
 }
 
 func (c *clientImpl) EnsureLabel(ctx context.Context, owner, repo, name, color, description string) error {

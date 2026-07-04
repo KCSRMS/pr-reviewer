@@ -3,7 +3,7 @@
 import { useEffect, useState, use, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { useToken } from "@/hooks/useToken";
-import { getPR, getPRDiff, requestReReview, submitCommentFeedback, explainComment, type PRDetail, type PRStatus, type FileDiff, type PRComment } from "@/lib/api";
+import { getPR, getPRDiff, requestReReview, submitCommentFeedback, explainComment, applySuggestion, type PRDetail, type PRStatus, type FileDiff, type PRComment } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,9 +100,11 @@ function parsePatch(patch: string): DiffLine[] {
 function DiffFileView({
   file,
   comments,
+  onApplySuggestion,
 }: {
   file: FileDiff;
   comments: PRComment[];
+  onApplySuggestion: (commentId: number) => Promise<void>;
 }) {
   const [open, setOpen] = useState(true);
   const lines = parsePatch(file.patch);
@@ -212,6 +214,9 @@ function DiffFileView({
                                     suggestion={comment.suggestion}
                                     line={comment.line}
                                     startLine={comment.start_line}
+                                    applied={!!comment.applied_at}
+                                    appliedBy={comment.applied_by}
+                                    onApply={() => onApplySuggestion(comment.id)}
                                   />
                                 )}
                               </div>
@@ -296,6 +301,22 @@ export default function PRDetailPage({
       toast.error("Could not generate explanation");
     } finally {
       setExplaining(null);
+    }
+  }
+
+  async function handleApplySuggestion(commentID: number) {
+    if (!token) return;
+    try {
+      await applySuggestion(token, commentID);
+      setPR((prev) => prev && {
+        ...prev,
+        latest_comments: prev.latest_comments?.map((c) =>
+          c.id === commentID ? { ...c, applied_at: new Date().toISOString() } : c
+        ),
+      });
+      toast.success("Fix applied — a re-review will run automatically");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to apply fix");
     }
   }
 
@@ -422,6 +443,7 @@ export default function PRDetailPage({
                 key={file.filename}
                 file={file}
                 comments={commentsByFile.get(file.filename) ?? []}
+                onApplySuggestion={handleApplySuggestion}
               />
             ))}
           </div>
@@ -451,7 +473,14 @@ export default function PRDetailPage({
                       </div>
                       <p className="text-base mb-2">{c.body}</p>
                       {c.suggestion && (
-                        <SuggestionBlock suggestion={c.suggestion} line={c.line} startLine={c.start_line} />
+                        <SuggestionBlock
+                          suggestion={c.suggestion}
+                          line={c.line}
+                          startLine={c.start_line}
+                          applied={!!c.applied_at}
+                          appliedBy={c.applied_by}
+                          onApply={() => handleApplySuggestion(c.id)}
+                        />
                       )}
                       <div className="flex items-center gap-2 mt-2" role="group" aria-label="Comment feedback">
                         <button
