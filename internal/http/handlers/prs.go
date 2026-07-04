@@ -240,14 +240,16 @@ func (h *PRHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	// Latest review comments with reply indicator
 	type commentOut struct {
-		ID       uint   `json:"id"`
-		Path     string `json:"path"`
-		Line     int    `json:"line"`
-		Side     string `json:"side"`
-		Body     string `json:"body"`
-		Severity string `json:"severity"`
-		Priority string `json:"priority"`
-		HasReply bool   `json:"has_reply"`
+		ID         uint   `json:"id"`
+		Path       string `json:"path"`
+		Line       int    `json:"line"`
+		Side       string `json:"side"`
+		Body       string `json:"body"`
+		Severity   string `json:"severity"`
+		Priority   string `json:"priority"`
+		StartLine  int    `json:"start_line,omitempty"`
+		Suggestion string `json:"suggestion,omitempty"`
+		HasReply   bool   `json:"has_reply"`
 	}
 	var latestComments []commentOut
 	if len(reviews) > 0 {
@@ -283,6 +285,7 @@ func (h *PRHandler) Get(w http.ResponseWriter, r *http.Request) {
 			latestComments = append(latestComments, commentOut{
 				ID: c.ID, Path: c.Path, Line: c.Line, Side: c.Side,
 				Body: c.Body, Severity: c.Severity, Priority: c.Priority,
+				StartLine: c.StartLine, Suggestion: c.Suggestion,
 				HasReply: hasReply,
 			})
 		}

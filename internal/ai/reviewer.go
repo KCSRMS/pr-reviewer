@@ -56,12 +56,14 @@ func NewReviewer(
 type agentJSON struct {
 	Summary  string `json:"summary"`
 	Comments []struct {
-		Path     string `json:"path"`
-		Line     int    `json:"line"`
-		Side     string `json:"side"`
-		Body     string `json:"body"`
-		Priority string `json:"priority"` // p0|p1|p2|p3
-		Severity string `json:"severity"` // legacy fallback
+		Path       string `json:"path"`
+		Line       int    `json:"line"`
+		Side       string `json:"side"`
+		Body       string `json:"body"`
+		Priority   string `json:"priority"` // p0|p1|p2|p3
+		Severity   string `json:"severity"` // legacy fallback
+		Suggestion string `json:"suggestion"`
+		StartLine  int    `json:"start_line"`
 	} `json:"comments"`
 }
 
@@ -125,6 +127,9 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 		go func(agentName string) {
 			defer wg.Done()
 			agentCtx := map[string]interface{}{}
+			if req.AutoFixEnabled {
+				agentCtx["suggestions_enabled"] = true
+			}
 			if ac, ok := req.RepoConfig[agentName]; ok {
 				if ac.ProviderID != "" {
 					agentCtx["provider_id"] = ac.ProviderID
@@ -206,23 +211,39 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 					continue
 				}
 			}
-			combined.Comments = append(combined.Comments, github.ReviewComment{
+			comment := github.ReviewComment{
 				Path:     c.Path,
 				Line:     c.Line,
 				Side:     sideOrDefault(c.Side),
 				Body:     fmt.Sprintf("%s %s", priorityLabel(priority), c.Body),
 				Severity: priorityToSeverity(priority),
 				Priority: priority,
-			})
+			}
+			if req.AutoFixEnabled && c.Suggestion != "" {
+				comment.Suggestion = c.Suggestion
+				comment.StartLine = c.StartLine
+			}
+			combined.Comments = append(combined.Comments, comment)
 		}
 	}
 
+	if req.AutoFixEnabled {
+		combined.Comments = ValidateSuggestions(r.log, combined.Comments, req.Diff)
+	}
+
 	combined.Score = computeScore(combined.Comments)
+	suggestionCount := 0
+	for _, c := range combined.Comments {
+		if c.Suggestion != "" {
+			suggestionCount++
+		}
+	}
 	span.SetAttributes(
 		attribute.Int("review.comments", len(combined.Comments)),
 		attribute.Int("review.score", combined.Score),
 		attribute.Int("review.input_tokens", combined.InputTokens),
 		attribute.Int("review.output_tokens", combined.OutputTokens),
+		attribute.Int("review.suggestions", suggestionCount),
 	)
 	r.log.Info("AI review complete", "comments", len(combined.Comments), "score", combined.Score)
 	return &combined, nil

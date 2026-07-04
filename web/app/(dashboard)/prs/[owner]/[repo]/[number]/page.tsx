@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SuggestionBlock } from "@/components/suggestion-block";
 import { toast } from "sonner";
 import { ThumbsUp, ThumbsDown, HelpCircle, ChevronDown, ChevronUp, Code } from "lucide-react";
 import {
@@ -206,6 +207,13 @@ function DiffFileView({
                                   )}
                                 </div>
                                 <p className="text-xs leading-relaxed">{comment.body}</p>
+                                {comment.suggestion && (
+                                  <SuggestionBlock
+                                    suggestion={comment.suggestion}
+                                    line={comment.line}
+                                    startLine={comment.start_line}
+                                  />
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -442,7 +450,10 @@ export default function PRDetailPage({
                         )}
                       </div>
                       <p className="text-base mb-2">{c.body}</p>
-                      <div className="flex items-center gap-2" role="group" aria-label="Comment feedback">
+                      {c.suggestion && (
+                        <SuggestionBlock suggestion={c.suggestion} line={c.line} startLine={c.start_line} />
+                      )}
+                      <div className="flex items-center gap-2 mt-2" role="group" aria-label="Comment feedback">
                         <button
                           onClick={() => handleFeedback(c.id, 1)}
                           className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring ${

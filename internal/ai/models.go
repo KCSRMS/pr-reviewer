@@ -39,4 +39,5 @@ type AnalysisRequest struct {
 	DiffTruncated         bool     // true if diff exceeded max_diff_lines and was dropped
 	PRTemplate            string   // content of .github/pull_request_template.md
 	ConsensusThreshold    int      // 0=disabled; N=require N agents to agree for p2/p3
+	AutoFixEnabled        bool     // when true, agents may propose one-click-applicable suggestions
 }

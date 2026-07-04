@@ -156,18 +156,7 @@ func (c *clientImpl) PostReview(ctx context.Context, owner, repo string, number 
 
 	var draftComments []*github.DraftReviewComment
 	for i := range review.Comments {
-		rc := &review.Comments[i]
-		line := rc.Line
-		side := rc.Side
-		if side == "" {
-			side = "RIGHT"
-		}
-		draftComments = append(draftComments, &github.DraftReviewComment{
-			Path: &rc.Path,
-			Body: &rc.Body,
-			Line: &line,
-			Side: &side,
-		})
+		draftComments = append(draftComments, buildDraftComment(&review.Comments[i]))
 	}
 
 	event := review.Event
@@ -299,8 +288,49 @@ func buildSummaryComment(review *ReviewSubmission, score int) string {
 	} else {
 		sb.WriteString("See the inline comments above for details on each finding.\n\n")
 	}
+	if fixable := countSuggestions(review.Comments); fixable > 0 {
+		fmt.Fprintf(&sb, "💡 %d finding(s) include a one-click fix — look for \"Commit suggestion\" on the inline comment.\n\n", fixable)
+	}
 	sb.WriteString("---\n_Powered by PR Reviewer_")
 	return sb.String()
+}
+
+// buildDraftComment converts a ReviewComment into the GitHub draft comment
+// payload, appending a ```suggestion block and setting the multi-line
+// start_line/start_side fields when the comment carries a validated fix.
+func buildDraftComment(rc *ReviewComment) *github.DraftReviewComment {
+	line := rc.Line
+	side := rc.Side
+	if side == "" {
+		side = "RIGHT"
+	}
+	body := rc.Body
+	if rc.Suggestion != "" {
+		body += "\n\n```suggestion\n" + rc.Suggestion + "\n```"
+	}
+	dc := &github.DraftReviewComment{
+		Path: &rc.Path,
+		Body: &body,
+		Line: &line,
+		Side: &side,
+	}
+	if rc.StartLine > 0 {
+		startLine := rc.StartLine
+		startSide := side
+		dc.StartLine = &startLine
+		dc.StartSide = &startSide
+	}
+	return dc
+}
+
+func countSuggestions(comments []ReviewComment) int {
+	n := 0
+	for _, c := range comments {
+		if c.Suggestion != "" {
+			n++
+		}
+	}
+	return n
 }
 
 func buildBodyWithComments(review *ReviewSubmission) string {
@@ -312,6 +342,12 @@ func buildBodyWithComments(review *ReviewSubmission) string {
 	sb.WriteString("\n\n---\n\n### Inline Findings\n\n")
 	for _, c := range review.Comments {
 		fmt.Fprintf(&sb, "**%s** (line %d, %s): %s\n\n", c.Path, c.Line, c.Severity, c.Body)
+		if c.Suggestion != "" {
+			// This fallback body can't host a real GitHub suggestion block (that
+			// requires a proper inline draft comment), so show the proposed fix
+			// as a plain code block instead.
+			fmt.Fprintf(&sb, "```\n%s\n```\n\n", c.Suggestion)
+		}
 	}
 	return sb.String()
 }

@@ -675,6 +675,8 @@ export interface ReviewComment {
   Side: string;
   Body: string;
   Severity: string;
+  StartLine?: number;
+  Suggestion?: string;
 }
 
 export interface Assignment {
@@ -781,6 +783,8 @@ export interface PRComment {
   body: string;
   severity: string;
   priority: string;
+  start_line?: number;
+  suggestion?: string;
   has_reply: boolean;
 }
 

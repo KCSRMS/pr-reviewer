@@ -52,7 +52,7 @@ func (a *CodeReviewAgent) Process(ctx context.Context, req mcp.Request) (*mcp.Re
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: codeReviewSystem,
+		SystemPrompt: withSuggestionRules(codeReviewSystem, req.Context),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

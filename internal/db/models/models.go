@@ -125,15 +125,17 @@ type Review struct {
 }
 
 type ReviewComment struct {
-	ID        uint `gorm:"primarykey"`
-	ReviewID  uint `gorm:"index;not null"`
-	Path      string
-	Line      int
-	Side      string
-	Body      string
-	Severity  string
-	Priority  string // p0|p1|p2|p3
-	CreatedAt time.Time
+	ID         uint `gorm:"primarykey"`
+	ReviewID   uint `gorm:"index;not null"`
+	Path       string
+	Line       int
+	Side       string
+	Body       string
+	Severity   string
+	Priority   string // p0|p1|p2|p3
+	StartLine  int    `gorm:"not null;default:0"`
+	Suggestion string `gorm:"not null;default:''"`
+	CreatedAt  time.Time
 }
 
 // WebhookDelivery tracks processed GitHub delivery IDs to prevent duplicate reviews.

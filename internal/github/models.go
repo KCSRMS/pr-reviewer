@@ -46,6 +46,14 @@ type ReviewComment struct {
 	Side     string `json:"side"`     // LEFT or RIGHT
 	Severity string `json:"severity"` // kept for backward compat; prefer Priority
 	Priority string `json:"priority"` // p0 | p1 | p2 | p3
+
+	// StartLine, when set, makes this a multi-line suggestion spanning
+	// [StartLine, Line] on Side. Zero means single-line.
+	StartLine int `json:"start_line,omitempty"`
+	// Suggestion, when set, is the exact replacement text for the commented
+	// line range, rendered as a GitHub ```suggestion block. Validated by
+	// ai.ValidateSuggestions before posting; never trust it unvalidated.
+	Suggestion string `json:"suggestion,omitempty"`
 }
 
 // ReviewSubmission is the payload for a batched PR review.

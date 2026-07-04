@@ -52,7 +52,7 @@ func (a *PerformanceAgent) Process(ctx context.Context, req mcp.Request) (*mcp.R
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: performanceSystem,
+		SystemPrompt: withSuggestionRules(performanceSystem, req.Context),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

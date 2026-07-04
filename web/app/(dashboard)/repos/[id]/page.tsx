@@ -27,6 +27,7 @@ interface CommitStatusCfg {
 }
 
 const DEFAULT_COMMIT_STATUS: CommitStatusCfg = { enabled: false, min_score: 60 };
+const DEFAULT_AUTO_FIX = false;
 
 const AGENTS = [
   { id: "code-review", label: "Code Review Agent", description: "General code quality and correctness", optional: false },
@@ -41,6 +42,7 @@ export default function RepoConfigPage({ params }: { params: Promise<{ id: strin
   const router = useRouter();
   const [config, setConfig] = useState<RepoAgentConfig>({});
   const [commitStatus, setCommitStatus] = useState<CommitStatusCfg>(DEFAULT_COMMIT_STATUS);
+  const [autoFix, setAutoFix] = useState(DEFAULT_AUTO_FIX);
   const [extraConfig, setExtraConfig] = useState<Record<string, unknown>>({});
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,9 +60,10 @@ export default function RepoConfigPage({ params }: { params: Promise<{ id: strin
       const raw = (cfg.config ?? {}) as Record<string, unknown>;
       if (raw.agents && typeof raw.agents === "object") {
         // Nested format: { agents, commit_status, ...other section-8 settings }.
-        const { agents, commit_status, ...rest } = raw;
+        const { agents, commit_status, auto_fix, ...rest } = raw;
         setConfig((agents as RepoAgentConfig) ?? {});
         setCommitStatus({ ...DEFAULT_COMMIT_STATUS, ...(commit_status as CommitStatusCfg) });
+        setAutoFix(typeof auto_fix === "boolean" ? auto_fix : DEFAULT_AUTO_FIX);
         setExtraConfig(rest);
       } else {
         // Legacy flat format: the whole object is the agents map.
@@ -104,6 +107,7 @@ export default function RepoConfigPage({ params }: { params: Promise<{ id: strin
         ...extraConfig,
         agents: config,
         commit_status: commitStatus,
+        auto_fix: autoFix,
       });
       toast.success("Config saved");
     } catch (e) {
@@ -238,6 +242,28 @@ export default function RepoConfigPage({ params }: { params: Promise<{ id: strin
           );
         })}
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1.5">
+              <CardTitle className="text-lg">Auto-fix suggestions</CardTitle>
+              <CardDescription className="text-sm">
+                When an agent is highly confident in an exact fix, propose it as a GitHub{" "}
+                <code className="text-xs bg-muted px-1 rounded">suggestion</code> block on the inline
+                comment — reviewers can apply it with GitHub&apos;s one-click &quot;Commit
+                suggestion&quot; button.
+              </CardDescription>
+            </div>
+            <Switch
+              checked={autoFix}
+              onCheckedChange={setAutoFix}
+              aria-label="Enable auto-fix suggestions"
+              className="cursor-pointer"
+            />
+          </div>
+        </CardHeader>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">

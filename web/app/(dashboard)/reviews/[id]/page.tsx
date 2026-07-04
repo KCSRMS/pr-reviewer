@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { SuggestionBlock } from "@/components/suggestion-block";
 
 function severityVariant(s: string): "default" | "destructive" | "secondary" {
   if (s === "error") return "destructive";
@@ -73,6 +74,9 @@ export default function ReviewDetailPage({ params }: { params: Promise<{ id: str
                     <Badge variant={severityVariant(c.Severity)} className="text-xs">{c.Severity}</Badge>
                   </div>
                   <p className="text-base">{c.Body}</p>
+                  {c.Suggestion && (
+                    <SuggestionBlock suggestion={c.Suggestion} line={c.Line} startLine={c.StartLine} />
+                  )}
                 </li>
               ))}
             </ul>

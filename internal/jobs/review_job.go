@@ -40,6 +40,7 @@ type repoReviewConfig struct {
 	AutoLabel          bool                      `json:"auto_label"`
 	ConsensusThreshold int                       `json:"consensus_threshold"`
 	CommitStatus       commitStatusConfig        `json:"commit_status"`
+	AutoFix            bool                      `json:"auto_fix"`
 }
 
 // commitStatusConfig controls posting a GitHub commit status for branch protection.
@@ -246,6 +247,7 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 		DiffTruncated:         diffTruncated,
 		PRTemplate:            prTemplate,
 		ConsensusThreshold:    fullCfg.ConsensusThreshold,
+		AutoFixEnabled:        fullCfg.AutoFix,
 	})
 	if err != nil {
 		w.Log.Error("AI review failed", "error", err)
@@ -432,12 +434,14 @@ func (w *ReviewWorker) persist(
 	var comments []models.ReviewComment
 	for _, c := range finalReview.Comments {
 		comments = append(comments, models.ReviewComment{
-			Path:     c.Path,
-			Line:     c.Line,
-			Side:     c.Side,
-			Body:     c.Body,
-			Severity: c.Severity,
-			Priority: c.Priority,
+			Path:       c.Path,
+			Line:       c.Line,
+			Side:       c.Side,
+			Body:       c.Body,
+			Severity:   c.Severity,
+			Priority:   c.Priority,
+			StartLine:  c.StartLine,
+			Suggestion: c.Suggestion,
 		})
 	}
 

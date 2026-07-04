@@ -49,7 +49,7 @@ func (a *SecurityAgent) Process(ctx context.Context, req mcp.Request) (*mcp.Resp
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: securitySystem,
+		SystemPrompt: withSuggestionRules(securitySystem, req.Context),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

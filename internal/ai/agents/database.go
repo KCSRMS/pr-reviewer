@@ -53,7 +53,7 @@ func (a *DatabaseAgent) Process(ctx context.Context, req mcp.Request) (*mcp.Resp
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: databaseSystem,
+		SystemPrompt: withSuggestionRules(databaseSystem, req.Context),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

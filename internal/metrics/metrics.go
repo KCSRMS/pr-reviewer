@@ -38,6 +38,25 @@ var (
 		},
 		[]string{"action"}, // opened | synchronize | skipped | invalid_sig | error
 	)
+
+	// SuggestionsEmittedTotal counts agent-proposed fix suggestions that passed
+	// validation and were posted as GitHub ```suggestion blocks.
+	SuggestionsEmittedTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "suggestions_emitted_total",
+			Help: "Total auto-fix suggestions posted to GitHub.",
+		},
+	)
+
+	// SuggestionsDroppedTotal counts agent-proposed suggestions rejected by
+	// validation before posting, labelled by rejection reason.
+	SuggestionsDroppedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "suggestions_dropped_total",
+			Help: "Total auto-fix suggestions dropped by validation, labelled by reason.",
+		},
+		[]string{"reason"},
+	)
 )
 
 func init() {
@@ -46,6 +65,8 @@ func init() {
 		LLMTokensTotal,
 		ReviewQueueDepth,
 		WebhookRequestsTotal,
+		SuggestionsEmittedTotal,
+		SuggestionsDroppedTotal,
 	)
 }
 
