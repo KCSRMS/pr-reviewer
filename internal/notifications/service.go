@@ -24,14 +24,12 @@ type SlackChannelConfig struct {
 	Template       string   `json:"template"`
 }
 
-// EmailChannelConfig is the JSON shape for channel="email". SMTP fields are
-// optional per channel; blank fields fall back to the server's env defaults
-// (see ResolveEmail).
+// EmailChannelConfig is the JSON shape for channel="email". Delivery goes
+// through a transactional email API (see ResolveEmail/SendEmail) rather than
+// SMTP, since SMTP ports are blocked outbound on common PaaS hosts.
 type EmailChannelConfig struct {
-	SMTPHost       string   `json:"smtp_host,omitempty"`
-	SMTPPort       int      `json:"smtp_port,omitempty"`
-	SMTPUsername   string   `json:"smtp_username,omitempty"`
-	SMTPPassword   string   `json:"smtp_password,omitempty"`
+	Provider       string   `json:"provider,omitempty"` // "resend" (default) — see emailProviders in email.go
+	APIKey         string   `json:"api_key,omitempty"`
 	From           string   `json:"from,omitempty"`
 	To             []string `json:"to"`
 	Events         []string `json:"events"`
@@ -116,14 +114,14 @@ func (s *notifService) NotifyAssignment(ctx context.Context, repoID uint, assign
 					to = append(to, u.Email)
 				}
 				if len(to) > 0 {
-					smtp, from := ResolveEmail(ec)
+					es, from := ResolveEmail(ec)
 					subject := fmt.Sprintf("Review requested: %s", prTitle)
 					body := RenderAssignment(assignee, prTitle, prURL, summary)
 					if strings.TrimSpace(ec.Template) != "" {
 						// Honour an admin-configured custom body, wrapped in the branded layout.
 						body = WrapCustom(subject, prTitle, RenderTemplate(ec.Template, vars))
 					}
-					_ = SendEmail(ctx, smtp, from, to, subject, body)
+					_ = SendEmail(ctx, es, from, to, subject, body)
 				}
 			}
 		case "webhook":
@@ -155,14 +153,14 @@ func (s *notifService) NotifyReviewComplete(ctx context.Context, repoID uint, pr
 			var ec EmailChannelConfig
 			if json.Unmarshal(cfg.Config, &ec) == nil && len(ec.To) > 0 &&
 				shouldNotifyComplete(ec.Events, ec.ScoreThreshold, score, isReReview) {
-				smtp, from := ResolveEmail(ec)
+				es, from := ResolveEmail(ec)
 				subject := fmt.Sprintf("[PR Reviewer] %s — %d/100", prTitle, score)
 				body := RenderReviewComplete(prTitle, prURL, summary, score, isReReview)
 				if strings.TrimSpace(ec.Template) != "" {
 					// Honour an admin-configured custom body, wrapped in the branded layout.
 					body = WrapCustom(subject, prTitle, RenderTemplate(ec.Template, vars))
 				}
-				_ = SendEmail(ctx, smtp, from, ec.To, subject, body)
+				_ = SendEmail(ctx, es, from, ec.To, subject, body)
 			}
 		case "webhook":
 			var wc WebhookChannelConfig

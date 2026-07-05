@@ -15,6 +15,7 @@ import {
   type SlackConfig,
   type EmailConfig,
   type WebhookConfig,
+  EMAIL_PROVIDERS,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Bell, Plus, Trash2, FlaskConical, Hash, Mail, Webhook, Zap, CalendarDays, Calendar } from "lucide-react";
 
@@ -54,7 +56,7 @@ function defaultConfig(channel: NotificationChannel): SlackConfig | EmailConfig 
     return { webhook_url: "", events: ["assignment", "review_complete"], score_threshold: 0, template: "" };
   }
   if (channel === "email") {
-    return { to: [], events: ["review_complete"], digest: "none", template: "", score_threshold: 0 };
+    return { provider: "resend", to: [], events: ["review_complete"], digest: "none", template: "", score_threshold: 0 };
   }
   return { url: "", secret: "", events: ["review_complete"], template: "", score_threshold: 0 };
 }
@@ -145,55 +147,36 @@ function EmailForm({
       </div>
       <div className="rounded-md border p-3 space-y-3">
         <p className="text-xs text-muted-foreground">
-          SMTP server — host, port and from address are required.
+          Delivered via a transactional email API — provider, API key and from address are required.
         </p>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="col-span-2 space-y-1.5">
-            <Label className="text-sm">SMTP host</Label>
-            <Input
-              placeholder="smtp.gmail.com"
-              value={value.smtp_host ?? ""}
-              onChange={(e) => onChange({ ...value, smtp_host: e.target.value })}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm">Port</Label>
-            <Input
-              type="number"
-              placeholder="587"
-              value={value.smtp_port ?? ""}
-              onChange={(e) =>
-                onChange({ ...value, smtp_port: e.target.value ? Number(e.target.value) : undefined })
-              }
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">Provider</Label>
+          <Select
+            value={value.provider ?? "resend"}
+            onValueChange={(provider) => { if (provider) onChange({ ...value, provider }); }}
+          >
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {EMAIL_PROVIDERS.map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1.5">
-          <Label className="text-sm">Username</Label>
-          <Input
-            placeholder="apikey / you@gmail.com"
-            value={value.smtp_username ?? ""}
-            onChange={(e) => onChange({ ...value, smtp_username: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-sm">Password</Label>
+          <Label className="text-sm">API key</Label>
           <Input
             type="password"
-            placeholder={value.smtp_password_set ? "•••••••• (leave blank to keep stored password)" : "SMTP password or app password"}
-            value={value.smtp_password ?? ""}
-            onChange={(e) => onChange({ ...value, smtp_password: e.target.value })}
+            placeholder={value.api_key_set ? "•••••••• (leave blank to keep stored key)" : "re_xxxxxxxxx"}
+            value={value.api_key ?? ""}
+            onChange={(e) => onChange({ ...value, api_key: e.target.value })}
           />
-          {value.smtp_password_set && (
+          {value.api_key_set && (
             <p className="text-xs text-muted-foreground">
-              A password is stored (encrypted). Leave blank to keep it, or type a new one to replace it.
+              A key is stored (encrypted). Leave blank to keep it, or type a new one to replace it.
             </p>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">
-          Port 465 uses implicit TLS; 587/25 use STARTTLS. Leave username &amp; password blank
-          for relays that don&apos;t require authentication.
-        </p>
       </div>
       <EventCheckboxes
         events={value.events}
@@ -414,8 +397,8 @@ export default function NotificationsPage() {
     if (!token) return;
     if (channel === "email") {
       const ec = channelConfig as EmailConfig;
-      if (!ec.smtp_host?.trim() || !ec.smtp_port || !ec.from?.trim()) {
-        toast.error("SMTP host, port and from address are required");
+      if ((!ec.api_key?.trim() && !ec.api_key_set) || !ec.from?.trim()) {
+        toast.error("API key and from address are required");
         return;
       }
     }
@@ -609,7 +592,7 @@ export default function NotificationsPage() {
                 <div className="grid grid-cols-3 gap-2">
                   {([
                     { id: "slack",   icon: <Hash className="h-5 w-5" />,    label: "Slack",   desc: "Post to a channel" },
-                    { id: "email",   icon: <Mail className="h-5 w-5" />,    label: "Email",   desc: "Send via SMTP" },
+                    { id: "email",   icon: <Mail className="h-5 w-5" />,    label: "Email",   desc: "Send via Resend" },
                     { id: "webhook", icon: <Webhook className="h-5 w-5" />, label: "Webhook", desc: "HTTP POST payload" },
                   ] as const).map((ch) => (
                     <button

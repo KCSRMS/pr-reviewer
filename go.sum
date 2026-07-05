@@ -135,6 +135,8 @@ github.com/prometheus/common v0.66.1 h1:h5E0h5/Y8niHc5DlaLlWLArTQI7tMrsfQjHV+d9Z
 github.com/prometheus/common v0.66.1/go.mod h1:gcaUsgf3KfRSwHY4dIMXLPV0K/Wg1oZ8+SbZk/HH/dA=
 github.com/prometheus/procfs v0.16.1 h1:hZ15bTNuirocR6u0JZ6BAHHmwS1p8B4P6MRqxtzMyRg=
 github.com/prometheus/procfs v0.16.1/go.mod h1:teAbpZRB1iIAJYREa1LsoWUXykVXA1KlTmWl8x/U+Is=
+github.com/resend/resend-go/v3 v3.9.2 h1:Ipjmm+NR/UWfO1PYKLcbFBiEAPtP0gyQxUQP/rcAdo8=
+github.com/resend/resend-go/v3 v3.9.2/go.mod h1:iI7VA0NoGjWvsNii5iNC5Dy0llsI3HncXPejhniYzwE=
 github.com/riverqueue/river v0.35.1 h1:TK1LLGRdTWL7ARPbIUB+TqMnTYJ0GiCoy5Q/yEf5yBE=
 github.com/riverqueue/river v0.35.1/go.mod h1:jDt0LimObI+5e6FVy7LyuIWfHftmV0wARmiK7W+9D64=
 github.com/riverqueue/river/riverdriver v0.35.1 h1:zJx8SaQdMP7zVEfd8SDoe8KjVHCXoXoFfzt6v+SJtQg=

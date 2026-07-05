@@ -242,14 +242,14 @@ func sendTestNotification(ctx context.Context, cfg models.NotificationConfig, fa
 		if len(to) == 0 {
 			return &testErr{"no recipients configured, and your account has no email on file to send a test to — add a recipient or sign in again to refresh your email"}
 		}
-		smtp, from := notifications.ResolveEmail(ec)
+		es, from := notifications.ResolveEmail(ec)
 		subject := "PR Reviewer — test notification"
 		body := notifications.RenderTest()
 		if strings.TrimSpace(ec.Template) != "" {
 			// Honour an admin-configured custom body, wrapped in the branded layout.
 			body = notifications.WrapCustom(subject, "Test notification", notifications.RenderTemplate(ec.Template, vars))
 		}
-		return notifications.SendEmail(ctx, smtp, from, to, subject, body)
+		return notifications.SendEmail(ctx, es, from, to, subject, body)
 	case "webhook":
 		var wc notifications.WebhookChannelConfig
 		if err := json.Unmarshal(cfg.Config, &wc); err != nil || wc.URL == "" {

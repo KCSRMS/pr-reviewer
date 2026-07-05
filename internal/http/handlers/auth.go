@@ -523,8 +523,8 @@ func (h *AuthHandler) sendAcceptanceNotification(ctx context.Context, invite *mo
 		if err := json.Unmarshal(cfg.Config, &ec); err != nil {
 			continue
 		}
-		smtpCfg, from := notifications.ResolveEmail(ec)
-		_ = notifications.SendEmail(ctx, smtpCfg, from, []string{admin.Email}, subject, body)
+		es, from := notifications.ResolveEmail(ec)
+		_ = notifications.SendEmail(ctx, es, from, []string{admin.Email}, subject, body)
 	}
 }
 

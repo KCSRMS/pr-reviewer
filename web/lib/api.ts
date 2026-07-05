@@ -243,12 +243,16 @@ export interface SlackConfig {
   template: string;
 }
 
+// More providers can be added server-side (internal/notifications/email.go);
+// add their id/label here to expose them in the settings UI.
+export const EMAIL_PROVIDERS: { id: string; label: string }[] = [
+  { id: "resend", label: "Resend" },
+];
+
 export interface EmailConfig {
-  smtp_host?: string;
-  smtp_port?: number;
-  smtp_username?: string;
-  smtp_password?: string; // write-only; never returned. blank on update = keep stored
-  smtp_password_set?: boolean; // read-only flag: whether a password is stored
+  provider?: string; // one of EMAIL_PROVIDERS; defaults to "resend"
+  api_key?: string; // write-only; never returned. blank on update = keep stored
+  api_key_set?: boolean; // read-only flag: whether a key is stored
   from?: string;
   to: string[];
   events: string[];

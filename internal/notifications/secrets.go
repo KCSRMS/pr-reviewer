@@ -49,10 +49,10 @@ func PrepareConfigForStore(channel string, incoming, existing []byte) ([]byte, e
 		if err := json.Unmarshal(incoming, &in); err != nil {
 			return nil, err
 		}
-		if in.SMTPPassword == "" {
-			in.SMTPPassword = existingEmailPassword(existing)
+		if in.APIKey == "" {
+			in.APIKey = existingEmailAPIKey(existing)
 		} else {
-			in.SMTPPassword = encryptSecret(in.SMTPPassword)
+			in.APIKey = encryptSecret(in.APIKey)
 		}
 		return json.Marshal(in)
 	case "webhook":
@@ -71,13 +71,13 @@ func PrepareConfigForStore(channel string, incoming, existing []byte) ([]byte, e
 	}
 }
 
-func existingEmailPassword(existing []byte) string {
+func existingEmailAPIKey(existing []byte) string {
 	if len(existing) == 0 {
 		return ""
 	}
 	var ex EmailChannelConfig
 	if json.Unmarshal(existing, &ex) == nil {
-		return ex.SMTPPassword
+		return ex.APIKey
 	}
 	return ""
 }
@@ -100,7 +100,7 @@ func RedactConfig(channel string, cfgJSON []byte) []byte {
 	var secretField string
 	switch channel {
 	case "email":
-		secretField = "smtp_password"
+		secretField = "api_key"
 	case "webhook":
 		secretField = "secret"
 	default:

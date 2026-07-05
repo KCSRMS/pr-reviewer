@@ -261,8 +261,8 @@ func (h *InviteHandler) sendInviteEmail(ctx context.Context, email, role, invite
 		if err := json.Unmarshal(cfg.Config, &ec); err != nil {
 			continue
 		}
-		smtp, from := notifications.ResolveEmail(ec)
-		_ = notifications.SendEmail(ctx, smtp, from, []string{email}, subject, body)
+		es, from := notifications.ResolveEmail(ec)
+		_ = notifications.SendEmail(ctx, es, from, []string{email}, subject, body)
 	}
 }
 
@@ -340,7 +340,7 @@ func (h *InviteHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	audit.Log(h.db, r, user.Login, user.ID, "invite.bulk_created", "user", "",
 		nil, map[string]any{"count": sent, "role": body.Role, "invited_by": user.Login})
 
-	// Send emails concurrently, capped at 10 in-flight at once to avoid SMTP rate limits.
+	// Send emails concurrently, capped at 10 in-flight at once to avoid provider rate limits.
 	go func() {
 		sem := make(chan struct{}, 10)
 		for _, item := range toSend {

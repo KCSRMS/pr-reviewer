@@ -24,8 +24,8 @@ type EmailDigestJobArgs struct {
 func (EmailDigestJobArgs) Kind() string { return "email_digest" }
 
 // EmailDigestWorker aggregates recent reviews and emails a summary to configured recipients.
-// Email transport (SMTP settings + from address) is resolved per channel with an
-// env-default fallback via notifications.ResolveEmail.
+// Email transport (provider + API key + from address) is resolved per channel
+// via notifications.ResolveEmail.
 type EmailDigestWorker struct {
 	river.WorkerDefaults[EmailDigestJobArgs]
 
@@ -66,9 +66,9 @@ func (w *EmailDigestWorker) Work(ctx context.Context, job *river.Job[EmailDigest
 			continue // nothing to report this period
 		}
 
-		smtp, from := notifications.ResolveEmail(ec)
+		es, from := notifications.ResolveEmail(ec)
 		subject := fmt.Sprintf("[PR Reviewer] %s digest — %d reviews", capitalize(period), len(rows))
-		if err := notifications.SendEmail(ctx, smtp, from, ec.To, subject, notifications.RenderDigest(period, since, toDigestEntries(rows))); err != nil {
+		if err := notifications.SendEmail(ctx, es, from, ec.To, subject, notifications.RenderDigest(period, since, toDigestEntries(rows))); err != nil {
 			w.Log.Error("digest email failed", "config_id", cfg.ID, "error", err)
 			continue
 		}
