@@ -3,7 +3,7 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: pr_reviewer
-      POSTGRES_PASSWORD: pr_reviewer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: pr_reviewer
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pr_reviewer"]
@@ -12,8 +12,8 @@ services:
       retries: 10
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
 
   # One-shot migration step. Runs the server image with MIGRATE_ONLY=true to
   # apply app (golang-migrate) + River migrations, then exits. app waits for it
@@ -23,7 +23,7 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: postgres://pr_reviewer:pr_reviewer@postgres:5432/pr_reviewer?sslmode=disable
+      DATABASE_URL: postgres://pr_reviewer:${POSTGRES_PASSWORD}@postgres:5432/pr_reviewer?sslmode=disable
       MIGRATE_ONLY: "true"
       # Set SKIP_MIGRATIONS=true (in .env or the shell) to make this a no-op that
       # exits 0, so `app` still starts without applying migrations.
@@ -37,10 +37,10 @@ services:
     build: .
     env_file: .env
     environment:
-      DATABASE_URL: postgres://pr_reviewer:pr_reviewer@postgres:5432/pr_reviewer?sslmode=disable
+      DATABASE_URL: postgres://pr_reviewer:${POSTGRES_PASSWORD}@postgres:5432/pr_reviewer?sslmode=disable
       SERVER_PORT: "8001"
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,8 +53,8 @@ services:
       context: ./web
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8001}
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       - app
     restart: unless-stopped
