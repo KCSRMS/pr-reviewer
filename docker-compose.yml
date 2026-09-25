@@ -39,8 +39,8 @@ services:
     environment:
       DATABASE_URL: postgres://pr_reviewer:pr_reviewer@postgres:5432/pr_reviewer?sslmode=disable
       SERVER_PORT: "8001"
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,8 +53,8 @@ services:
       context: ./web
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8001}
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       - app
     restart: unless-stopped
