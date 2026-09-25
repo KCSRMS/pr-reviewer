@@ -4,35 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Astraxx04/pr-reviewer/internal/ai"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/llm"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/mcp"
 	"github.com/Astraxx04/pr-reviewer/internal/metrics"
 )
-
-const securitySystem = `You are a security engineer reviewing a pull request diff.
-Respond ONLY with a valid JSON object — no markdown, no explanation — in this exact format:
-{
-  "summary": "One sentence security assessment",
-  "comments": [
-    {
-      "path": "relative/file/path",
-      "line": <positive integer — must be a line present in the diff hunk>,
-      "side": "RIGHT",
-      "body": "Description of the security issue and how to fix it",
-      "priority": "p0|p1|p2|p3"
-    }
-  ]
-}
-
-Priority levels for security:
-  p0 = Critical: RCE, SQLi, XSS, auth bypass, exposed secrets, SSRF
-  p1 = High: insecure deserialization, path traversal, privilege escalation, missing auth check
-  p2 = Medium: missing rate limiting, verbose error messages, weak crypto
-  p3 = Low: missing security header, informational finding
-
-Rules:
-- Only comment on lines that are part of the diff (added or context lines).
-- Only report genuine security findings. If nothing is found, return an empty comments array.`
 
 type SecurityAgent struct {
 	registry *llm.ProviderRegistry
@@ -49,7 +25,7 @@ func (a *SecurityAgent) Process(ctx context.Context, req mcp.Request) (*mcp.Resp
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: withSuggestionRules(securitySystem, req.Context),
+		SystemPrompt: reviewSystemPrompt(req.Context, ai.RoleSecurity),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

@@ -27,6 +27,8 @@ type Client interface {
 	RequestReviewers(ctx context.Context, owner, repo string, number int, reviewers []string) error
 	// GetReviewCommentsByReview lists the inline comments belonging to a specific review.
 	GetReviewCommentsByReview(ctx context.Context, owner, repo string, number int, reviewID int64) ([]ReviewCommentRef, error)
+	// ListReviewComments lists inline review comments already on the pull request.
+	ListReviewComments(ctx context.Context, owner, repo string, number int) ([]ReviewCommentRef, error)
 	// PostReviewCommentReply posts a reply inside an existing review comment thread.
 	PostReviewCommentReply(ctx context.Context, owner, repo string, number int, inReplyTo int64, body string) error
 	// GetFileContent fetches a single file's content from the repository.
@@ -207,6 +209,33 @@ func (c *clientImpl) GetReviewCommentsByReview(ctx context.Context, owner, repo 
 		logger.ExternalCall(ctx, "github", "PullRequests.ListReviewComments", start, err, "owner", owner, "repo", repo, "pr", number, "review_id", reviewID)
 		if err != nil {
 			return nil, fmt.Errorf("github: list review comments: %w", err)
+		}
+		for _, c := range comments {
+			all = append(all, ReviewCommentRef{
+				ID:     c.GetID(),
+				Body:   c.GetBody(),
+				Author: c.GetUser().GetLogin(),
+				Path:   c.GetPath(),
+				Line:   c.GetLine(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
+}
+
+func (c *clientImpl) ListReviewComments(ctx context.Context, owner, repo string, number int) ([]ReviewCommentRef, error) {
+	opts := &github.PullRequestListCommentsOptions{ListOptions: github.ListOptions{PerPage: 100}}
+	var all []ReviewCommentRef
+	for {
+		start := time.Now()
+		comments, resp, err := c.client.PullRequests.ListComments(ctx, owner, repo, number, opts)
+		logger.ExternalCall(ctx, "github", "PullRequests.ListComments", start, err, "owner", owner, "repo", repo, "pr", number)
+		if err != nil {
+			return nil, fmt.Errorf("github: list pull request comments: %w", err)
 		}
 		for _, c := range comments {
 			all = append(all, ReviewCommentRef{

@@ -4,38 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Astraxx04/pr-reviewer/internal/ai"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/llm"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/mcp"
 	"github.com/Astraxx04/pr-reviewer/internal/metrics"
 )
-
-const performanceSystem = `You are a senior engineer reviewing a pull request diff specifically for performance.
-Respond ONLY with a valid JSON object — no markdown, no explanation — in this exact format:
-{
-  "summary": "One sentence overall performance assessment",
-  "comments": [
-    {
-      "path": "relative/file/path",
-      "line": <positive integer — must be a line present in the diff hunk>,
-      "side": "RIGHT",
-      "body": "Concise, actionable feedback",
-      "priority": "p0|p1|p2|p3"
-    }
-  ]
-}
-
-Priority levels:
-  p0 = Critical: pathological complexity or a query/loop that will not scale and blocks functionality
-  p1 = High: N+1 query, unbounded allocation, blocking call on a hot path, missing pagination
-  p2 = Medium: avoidable repeated work, inefficient data structure, unnecessary copy
-  p3 = Low: minor optimisation or micro-inefficiency
-
-Rules:
-- Only comment on lines that are part of the diff (added or context lines).
-- Focus exclusively on performance: algorithmic complexity, N+1 database queries, allocations,
-  blocking I/O in hot paths, missing caching/pagination, and concurrency bottlenecks.
-- Do NOT comment on style, naming, or correctness unrelated to performance — other agents cover those.
-- Only report genuine issues. If nothing is wrong, return an empty comments array.`
 
 type PerformanceAgent struct {
 	registry *llm.ProviderRegistry
@@ -52,7 +25,7 @@ func (a *PerformanceAgent) Process(ctx context.Context, req mcp.Request) (*mcp.R
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: withSuggestionRules(performanceSystem, req.Context),
+		SystemPrompt: reviewSystemPrompt(req.Context, ai.RolePerformance),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

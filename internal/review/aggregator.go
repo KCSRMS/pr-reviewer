@@ -40,7 +40,6 @@ func (a *aggregatorImpl) Aggregate(_ context.Context, results []ai.ReviewResult)
 	}
 	best := make(map[lineKey]github.ReviewComment)
 	var summaries []string
-	needsChanges := false
 
 	for _, r := range results {
 		if r.Summary != "" {
@@ -58,17 +57,11 @@ func (a *aggregatorImpl) Aggregate(_ context.Context, results []ai.ReviewResult)
 	var comments []github.ReviewComment
 	for _, c := range best {
 		comments = append(comments, c)
-		if c.Priority == "p0" || c.Priority == "p1" {
-			needsChanges = true
-		}
 	}
 
-	status := "APPROVE"
-	if needsChanges {
-		status = "REQUEST_CHANGES"
-	} else if len(comments) > 0 {
-		status = "COMMENT"
-	}
+	// Reviews are comments. A High finding must not be posted as an approval.
+	// Requesting changes stays a manual choice.
+	status := "COMMENT"
 
 	summary := "No issues found."
 	if len(summaries) > 0 {

@@ -102,8 +102,13 @@ func (h *InProcessWebhookHandler) Handle(w http.ResponseWriter, r *http.Request)
 			h.log.Error("failed to build PR context", "error", err)
 			return
 		}
+		repoRules, existingComments := ai.GatherPromptExtras(ctx, h.ghClient, owner, repoName, number)
 		result, err := h.aiService.Review(ctx, ai.AnalysisRequest{
-			Diff: prCtx.Diff, Title: prCtx.Title, Body: prCtx.Body,
+			Diff:             prCtx.Diff,
+			Title:            prCtx.Title,
+			Body:             prCtx.Body,
+			RepoRules:        repoRules,
+			ExistingComments: existingComments,
 		})
 		if err != nil {
 			h.log.Error("AI review failed", "error", err)

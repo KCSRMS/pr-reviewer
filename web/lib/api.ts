@@ -515,6 +515,24 @@ export function putRetentionSettings(token: string, body: RetentionSettings) {
   });
 }
 
+export interface ReviewPromptSettings {
+  prompt: string;
+  is_default: boolean;
+  default_prompt: string;
+}
+
+export function getReviewPrompt(token: string) {
+  return apiFetch<ReviewPromptSettings>("/api/settings/review-prompt", { token });
+}
+
+export function putReviewPrompt(token: string, prompt: string) {
+  return apiFetch<ReviewPromptSettings>("/api/settings/review-prompt", {
+    method: "PUT",
+    token,
+    body: JSON.stringify({ prompt }),
+  });
+}
+
 export function eraseUserData(token: string, login: string) {
   return apiFetch<void>(`/api/users/${encodeURIComponent(login)}/data`, {
     method: "DELETE",

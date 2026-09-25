@@ -38,6 +38,9 @@ type AnalysisRequest struct {
 	CustomViolations      []string // pre-formatted violations from .pr-reviewer.yml
 	DiffTruncated         bool     // true if diff exceeded max_diff_lines and was dropped
 	PRTemplate            string   // content of .github/pull_request_template.md
+	RepoRules             string   // AGENTS.md and copilot instructions, when present
+	ExistingComments      string   // inline review comments already on the PR
+	ReviewPolicy          string   // editable system policy; empty uses the built-in default
 	ConsensusThreshold    int      // 0=disabled; N=require N agents to agree for p2/p3
 	AutoFixEnabled        bool     // when true, agents may propose one-click-applicable suggestions
 }

@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Cpu, GitBranch, Bell, Webhook, ClipboardList, KeyRound, Database, Puzzle, MessageSquare } from "lucide-react";
+import { Cpu, GitBranch, Bell, Webhook, ClipboardList, KeyRound, Database, Puzzle, MessageSquare, ScrollText } from "lucide-react";
 
 const sections = [
+  {
+    title: "Review prompt",
+    description: "Edit the system prompt used for pull request reviews.",
+    href: "/settings/review-prompt",
+    icon: ScrollText,
+    label: "Edit prompt",
+  },
   {
     title: "AI Providers",
     description: "Configure OpenAI, Anthropic, Ollama, or custom providers.",

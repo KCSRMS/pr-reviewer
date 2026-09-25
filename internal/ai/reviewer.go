@@ -101,6 +101,8 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 		"RAGContext":       ragContext,
 		"TicketContext":    req.TicketContext,
 		"PRTemplate":       req.PRTemplate,
+		"RepoRules":        req.RepoRules,
+		"ExistingComments": req.ExistingComments,
 		"FalsePositives":   fpStr,
 		"CustomViolations": violationsStr,
 		"DiffTruncated":    req.DiffTruncated,
@@ -130,6 +132,9 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 			if req.AutoFixEnabled {
 				agentCtx["suggestions_enabled"] = true
 			}
+			if req.ReviewPolicy != "" {
+				agentCtx["review_policy"] = req.ReviewPolicy
+			}
 			if ac, ok := req.RepoConfig[agentName]; ok {
 				if ac.ProviderID != "" {
 					agentCtx["provider_id"] = ac.ProviderID
@@ -155,6 +160,8 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 	}
 	var rawResults []rawResult
 	var combined ReviewResult
+	var primarySummary string
+	var otherSummaries []string
 
 	for res := range ch {
 		if res.err != nil {
@@ -173,6 +180,19 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 			continue
 		}
 		rawResults = append(rawResults, rawResult{name: res.name, parsed: parsed})
+		if parsed.Summary == "" {
+			continue
+		}
+		if res.name == "code-review" {
+			primarySummary = parsed.Summary
+		} else {
+			otherSummaries = append(otherSummaries, parsed.Summary)
+		}
+	}
+	if primarySummary != "" {
+		combined.Summary = primarySummary
+	} else {
+		combined.Summary = strings.Join(otherSummaries, "\n\n")
 	}
 
 	// Build consensus counts (only when threshold > 1)
@@ -197,11 +217,6 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 
 	// Merge agent results
 	for _, raw := range rawResults {
-		if combined.Summary == "" {
-			combined.Summary = raw.parsed.Summary
-		} else {
-			combined.Summary += " | " + raw.parsed.Summary
-		}
 		for _, c := range raw.parsed.Comments {
 			priority := normalisePriority(c.Priority, c.Severity)
 			// Apply consensus filter to p2/p3 comments
@@ -336,13 +351,13 @@ func normalisePriority(priority, severity string) string {
 func priorityLabel(p string) string {
 	switch p {
 	case "p0":
-		return "🔴 **[P0 - Critical]**"
+		return "**[High]**"
 	case "p1":
-		return "🟠 **[P1 - High]**"
+		return "**[High]**"
 	case "p2":
-		return "🟡 **[P2 - Medium]**"
+		return "**[Medium]**"
 	default:
-		return "🟢 **[P3 - Low]**"
+		return "**[Low]**"
 	}
 }
 

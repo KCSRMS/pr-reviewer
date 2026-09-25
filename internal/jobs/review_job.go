@@ -210,6 +210,7 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 
 	// Fetch PR template for template-awareness check.
 	prTemplate, _ := instClient.GetFileContent(ctx, args.Owner, args.Repo, ".github/pull_request_template.md")
+	repoRules, existingComments := ai.GatherPromptExtras(ctx, instClient, args.Owner, args.Repo, args.Number)
 
 	// Load false positive patterns: comment bodies that received 2+ thumbs-down votes.
 	var falsePositivePatterns []string
@@ -246,6 +247,9 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 		CustomViolations:      customViolations,
 		DiffTruncated:         diffTruncated,
 		PRTemplate:            prTemplate,
+		RepoRules:             repoRules,
+		ExistingComments:      existingComments,
+		ReviewPolicy:          ai.LoadReviewPolicy(w.DB),
 		ConsensusThreshold:    fullCfg.ConsensusThreshold,
 		AutoFixEnabled:        fullCfg.AutoFix,
 	})

@@ -1,5 +1,7 @@
 package agents
 
+import "github.com/Astraxx04/pr-reviewer/internal/ai"
+
 // suggestionRules extends an agent's JSON comment schema with two optional
 // fields so the model can propose an exact, one-click-applicable fix. It is
 // only appended to the system prompt when the repo has auto-fix enabled —
@@ -33,6 +35,11 @@ func suggestionsEnabled(reqCtx map[string]any) bool {
 }
 
 // withSuggestionRules appends suggestionRules to a base system prompt when enabled.
+func reviewSystemPrompt(reqCtx map[string]any, role string) string {
+	policy, _ := reqCtx["review_policy"].(string)
+	return withSuggestionRules(ai.ComposeSystemPrompt(policy, role), reqCtx)
+}
+
 func withSuggestionRules(systemPrompt string, reqCtx map[string]any) string {
 	if suggestionsEnabled(reqCtx) {
 		return systemPrompt + suggestionRules
