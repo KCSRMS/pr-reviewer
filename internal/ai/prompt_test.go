@@ -46,6 +46,21 @@ func TestReviewPromptIncludesRulesAndComments(t *testing.T) {
 	}
 }
 
+func TestReviewPromptKeepsPartialDiff(t *testing.T) {
+	out := ReviewPrompt.Render(map[string]interface{}{
+		"Title":         "Big change",
+		"Diff":          "--- kept.go\n+line",
+		"DiffTruncated": true,
+		"OmittedFiles":  "huge.json",
+	})
+	if !strings.Contains(out, "--- kept.go") || !strings.Contains(out, "huge.json") {
+		t.Fatalf("truncated prompt hid the kept diff:\n%s", out)
+	}
+	if strings.Contains(out, "file names and PR description only") {
+		t.Fatal("truncated prompt still drops the diff")
+	}
+}
+
 func TestEffectiveReviewPolicy(t *testing.T) {
 	if EffectiveReviewPolicy("  ") != DefaultReviewPolicy {
 		t.Fatal("blank policy should use the default")

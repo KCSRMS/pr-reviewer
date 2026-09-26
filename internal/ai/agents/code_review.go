@@ -26,8 +26,9 @@ func (a *CodeReviewAgent) Process(ctx context.Context, req mcp.Request) (*mcp.Re
 		return nil, err
 	}
 
+	systemPrompt := reviewSystemPrompt(req.Context, ai.RolePrimary)
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: reviewSystemPrompt(req.Context, ai.RolePrimary),
+		SystemPrompt: systemPrompt,
 		UserPrompt:   req.Query,
 		Model:        model,
 	})
@@ -35,19 +36,7 @@ func (a *CodeReviewAgent) Process(ctx context.Context, req mcp.Request) (*mcp.Re
 		return nil, fmt.Errorf("code-review agent: %w", err)
 	}
 	metrics.RecordLLMTokens(model, resp.InputTokens, resp.OutputTokens)
-
-	if err := validateAgentJSON(resp.Content); err != nil {
-		return nil, fmt.Errorf("code-review agent: invalid response JSON: %w", err)
-	}
-
-	return &mcp.Response{
-		Content: resp.Content,
-		Metadata: map[string]any{
-			"input_tokens":  resp.InputTokens,
-			"output_tokens": resp.OutputTokens,
-			"provider":      provider.Name(),
-		},
-	}, nil
+	return agentResult("code-review", resp.Content, systemPrompt, provider.Name(), resp.InputTokens, resp.OutputTokens, validateAgentJSON(resp.Content))
 }
 
 func (a *CodeReviewAgent) resolveProvider(req mcp.Request) (llm.Provider, string, error) {

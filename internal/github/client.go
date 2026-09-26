@@ -104,10 +104,8 @@ func (c *clientImpl) GetPullRequest(ctx context.Context, owner, repo string, num
 
 // fetching the pull request diff
 func (c *clientImpl) GetPullRequestDiff(ctx context.Context, owner, repo string, number int) ([]FileDiff, error) {
-	// Strategy: Use ListFiles to get file metadata and Patch content.
-	// This is robust for most PRs and provides structured data (filename, status, patch).
-	// Note: Large diffs might be truncated by GitHub API. For extremely large PRs,
-	// we might need to fallback to fetching the raw diff, but ListFiles is preferred for AI context.
+	// ListFiles supplies filename, status, and patch. GitHub omits patch on large
+	// files; those are filled from the raw diff below and are never dropped.
 
 	opts := &github.ListOptions{PerPage: 100}
 	var allFiles []*github.CommitFile
@@ -125,25 +123,55 @@ func (c *clientImpl) GetPullRequestDiff(ctx context.Context, owner, repo string,
 		opts.Page = resp.NextPage
 	}
 
+	// ListFiles omits patch when a file's diff is large. Dropping those files
+	// makes the review look at an empty change set. Fill them from the raw
+	// unified diff, and keep the file even when that also has no hunk.
+	rawPatches := c.rawPatchesForMissing(ctx, owner, repo, number, allFiles)
+
 	var fileDiffs []FileDiff
 	for _, f := range allFiles {
-		// specific file handling can be added here (e.g., ignore if Patch is empty/nil for binaries)
 		patch := f.GetPatch()
+		source := PatchSourceListFiles
 		if patch == "" && f.GetStatus() != "removed" {
-			// Skip files with no patch (likely binary or too large) unless they are removed
-			continue
+			if p, ok := rawPatches[f.GetFilename()]; ok && p != "" {
+				patch = p
+				source = PatchSourceRawDiff
+			} else {
+				source = PatchSourceUnavailable
+			}
 		}
 
 		fileDiffs = append(fileDiffs, FileDiff{
-			Filename:  f.GetFilename(),
-			Status:    f.GetStatus(),
-			Patch:     patch,
-			Additions: f.GetAdditions(),
-			Deletions: f.GetDeletions(),
+			Filename:    f.GetFilename(),
+			Status:      f.GetStatus(),
+			Patch:       patch,
+			Additions:   f.GetAdditions(),
+			Deletions:   f.GetDeletions(),
+			PatchSource: source,
 		})
 	}
 
 	return fileDiffs, nil
+}
+
+func (c *clientImpl) rawPatchesForMissing(ctx context.Context, owner, repo string, number int, files []*github.CommitFile) map[string]string {
+	needRaw := false
+	for _, f := range files {
+		if f.GetPatch() == "" && f.GetStatus() != "removed" {
+			needRaw = true
+			break
+		}
+	}
+	if !needRaw {
+		return nil
+	}
+	start := time.Now()
+	raw, _, err := c.client.PullRequests.GetRaw(ctx, owner, repo, number, github.RawOptions{Type: github.Diff})
+	logger.ExternalCall(ctx, "github", "PullRequests.GetRaw", start, err, "owner", owner, "repo", repo, "pr", number)
+	if err != nil {
+		return nil
+	}
+	return ParseUnifiedDiff(raw)
 }
 
 func (c *clientImpl) PostReview(ctx context.Context, owner, repo string, number int, review *ReviewSubmission) (int64, error) {

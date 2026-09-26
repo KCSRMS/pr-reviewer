@@ -10,6 +10,7 @@ import (
 
 	gogithub "github.com/google/go-github/v69/github"
 	"github.com/riverqueue/river"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -186,16 +187,11 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 		}
 	}
 
-	// Apply max_diff_lines guard.
-	var diffTruncated bool
-	totalLines := 0
-	for _, f := range diff {
-		totalLines += strings.Count(f.Patch, "\n")
-	}
-	if totalLines > maxDiffLines {
-		diffTruncated = true
-		diff = nil // drop diff; prompt will note it was truncated
-	}
+	// Keep every file that fits. The first file is always kept so a single
+	// large change is still reviewed. Later files over the cap are named in
+	// the prompt instead of being silently dropped.
+	diff, omittedFiles := capDiff(diff, maxDiffLines)
+	diffTruncated := len(omittedFiles) > 0
 
 	// Fetch and evaluate .pr-reviewer.yml custom rules.
 	var customViolations []string
@@ -246,6 +242,7 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 		FalsePositivePatterns: falsePositivePatterns,
 		CustomViolations:      customViolations,
 		DiffTruncated:         diffTruncated,
+		OmittedFiles:          omittedFiles,
 		PRTemplate:            prTemplate,
 		RepoRules:             repoRules,
 		ExistingComments:      existingComments,
@@ -303,7 +300,7 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 	}
 
 	// Persist to database (non-fatal).
-	reviewRow, err := w.persist(ctx, dbRepo, args, prCtx, finalReview, result.Score, latency, result.InputTokens, result.OutputTokens)
+	reviewRow, err := w.persist(ctx, dbRepo, args, prCtx, finalReview, result.Score, latency, result.InputTokens, result.OutputTokens, result.Trace)
 	if err != nil {
 		w.Log.Error("failed to persist review", "error", err)
 	}
@@ -418,6 +415,7 @@ func (w *ReviewWorker) persist(
 	latencyMS int64,
 	inputTokens int,
 	outputTokens int,
+	trace *ai.ReviewTrace,
 ) (*models.Review, error) {
 	if dbRepo == nil {
 		return nil, nil
@@ -449,6 +447,15 @@ func (w *ReviewWorker) persist(
 		})
 	}
 
+	var traceJSON datatypes.JSON
+	if trace != nil {
+		if raw, err := json.Marshal(trace); err != nil {
+			return nil, err
+		} else {
+			traceJSON = raw
+		}
+	}
+
 	reviewRow := &models.Review{
 		PRID:         prRow.ID,
 		Status:       finalReview.Status,
@@ -458,6 +465,7 @@ func (w *ReviewWorker) persist(
 		OutputTokens: outputTokens,
 		LatencyMS:    latencyMS,
 		Comments:     comments,
+		Trace:        traceJSON,
 	}
 	if err := repo.NewReviewRepo(w.DB).Create(ctx, reviewRow); err != nil {
 		return nil, err
@@ -548,6 +556,29 @@ func (w *ReviewWorker) applyLabels(ctx context.Context, client gh.Client, args R
 		return err
 	}
 	return client.AddLabelsToIssue(ctx, args.Owner, args.Repo, args.Number, []string{labelName})
+}
+
+// capDiff keeps files until maxLines of patch text are used. The first file is
+// always included. Filenames that do not fit are returned so the prompt can
+// say they were not reviewed.
+func capDiff(diff []gh.FileDiff, maxLines int) (kept []gh.FileDiff, omitted []string) {
+	if maxLines <= 0 {
+		return diff, nil
+	}
+	used := 0
+	for i, f := range diff {
+		lines := strings.Count(f.Patch, "\n")
+		if f.Patch != "" && !strings.HasSuffix(f.Patch, "\n") {
+			lines++
+		}
+		if i > 0 && used+lines > maxLines {
+			omitted = append(omitted, f.Filename)
+			continue
+		}
+		kept = append(kept, f)
+		used += lines
+	}
+	return kept, omitted
 }
 
 // postCommitStatus posts a GitHub commit status for branch-protection use (non-fatal).

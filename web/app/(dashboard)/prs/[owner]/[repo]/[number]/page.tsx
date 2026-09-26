@@ -3,7 +3,7 @@
 import { useEffect, useState, use, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { useToken } from "@/hooks/useToken";
-import { getPR, getPRDiff, requestReReview, submitCommentFeedback, explainComment, applySuggestion, type PRDetail, type PRStatus, type FileDiff, type PRComment } from "@/lib/api";
+import { getPR, getPRDiff, getPRDebug, requestReReview, submitCommentFeedback, explainComment, applySuggestion, type PRDetail, type PRStatus, type FileDiff, type PRComment, type PRDebug } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,6 +93,137 @@ function parsePatch(patch: string): DiffLine[] {
     }
   }
   return result;
+}
+
+function ReviewDebugSidebar({
+  open,
+  onClose,
+  token,
+  owner,
+  repo,
+  number,
+}: {
+  open: boolean;
+  onClose: () => void;
+  token: string | null;
+  owner: string;
+  repo: string;
+  number: number;
+}) {
+  const [data, setData] = useState<PRDebug | null>(null);
+  const [reviewId, setReviewId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [section, setSection] = useState("files");
+
+  useEffect(() => {
+    if (!open || !token) return;
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    getPRDebug(token, owner, repo, number, reviewId ?? undefined)
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, token, owner, repo, number, reviewId]);
+
+  if (!open) return null;
+
+  const trace = data?.review?.trace;
+  const agents = trace?.agents ?? [];
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-label="Review debug">
+      <button className="absolute inset-0 bg-black/40" aria-label="Close debug panel" onClick={onClose} />
+      <aside className="relative flex h-full w-full max-w-xl flex-col border-l bg-background shadow-xl">
+        <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+          <h2 className="text-lg font-semibold">Review debug</h2>
+          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+        </div>
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          {data && data.reviews.length > 0 && (
+            <label className="block text-sm">
+              <span className="text-muted-foreground">Review</span>
+              <select
+                className="mt-1 w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+                value={data.review?.id ?? ""}
+                onChange={(e) => setReviewId(Number(e.target.value))}
+              >
+                {data.reviews.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    #{r.id} {r.status} {r.score}/100 {r.has_trace ? "" : "(no trace)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {loading && <p className="text-sm text-muted-foreground">Loading trace…</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          {!loading && data && !trace && (
+            <p className="text-sm text-muted-foreground">
+              This review has no debug trace. Re-review the pull request to capture the files and prompts that were sent.
+            </p>
+          )}
+          {trace && (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant={section === "files" ? "default" : "outline"} onClick={() => setSection("files")}>Files</Button>
+                <Button size="sm" variant={section === "prompt" ? "default" : "outline"} onClick={() => setSection("prompt")}>User prompt</Button>
+                {agents.map((a) => (
+                  <Button key={a.name} size="sm" variant={section === a.name ? "default" : "outline"} onClick={() => setSection(a.name)}>
+                    {a.name}
+                  </Button>
+                ))}
+              </div>
+              {section === "files" && (
+                <div className="space-y-3 text-sm">
+                  {trace.diff_truncated && (
+                    <p>Diff was capped. Omitted: {(trace.omitted_files ?? []).join(", ") || "none listed"}.</p>
+                  )}
+                  <ul className="space-y-2">
+                    {trace.files.map((f) => (
+                      <li key={f.path} className="rounded-md border px-3 py-2">
+                        <div className="font-mono text-xs break-all">{f.path}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {f.status} +{f.additions} -{f.deletions} · {f.patch_bytes} bytes · {f.patch_source || "unknown"}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {trace.files.length === 0 && <p className="text-muted-foreground">No files were sent.</p>}
+                </div>
+              )}
+              {section === "prompt" && (
+                <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-3 text-xs">{trace.user_prompt}</pre>
+              )}
+              {agents.filter((a) => a.name === section).map((a) => (
+                <div key={a.name} className="space-y-3">
+                  {a.error && <p className="text-sm text-destructive">{a.error}</p>}
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">System prompt</p>
+                    <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-3 text-xs">{a.system_prompt || "(not recorded)"}</pre>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">Response</p>
+                    <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-3 text-xs">{a.response || "(empty)"}</pre>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
 }
 
 // ---- Diff file view component ----
@@ -253,6 +384,7 @@ export default function PRDetailPage({
   const [feedback, setFeedback] = useState<Record<number, { up: number; down: number; myVote: 1 | -1 | 0 }>>({});
   const [explaining, setExplaining] = useState<number | null>(null);
   const [explanation, setExplanation] = useState<{ id: number; text: string } | null>(null);
+  const [debugOpen, setDebugOpen] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -345,6 +477,14 @@ export default function PRDetailPage({
 
   return (
     <div className="space-y-8 max-w-4xl">
+      <ReviewDebugSidebar
+        open={debugOpen}
+        onClose={() => setDebugOpen(false)}
+        token={token}
+        owner={owner}
+        repo={repo}
+        number={Number(number)}
+      />
       {/* Header */}
       <div>
         <Button variant="ghost" size="sm" className="-ml-2 mb-3 text-muted-foreground" onClick={() => router.push("/prs")} aria-label="Back to pull requests list">
@@ -352,9 +492,14 @@ export default function PRDetailPage({
         </Button>
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-3xl font-bold">{pr.title || `PR #${pr.number}`}</h1>
-          <Button size="lg" onClick={handleReReview} disabled={rereviewing} aria-label="Request re-review of this pull request" className="shrink-0">
-            {rereviewing ? "Queuing…" : "Re-review"}
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button size="lg" variant="outline" onClick={() => setDebugOpen(true)} aria-label="Open review debug panel">
+              Debug
+            </Button>
+            <Button size="lg" onClick={handleReReview} disabled={rereviewing} aria-label="Request re-review of this pull request">
+              {rereviewing ? "Queuing…" : "Re-review"}
+            </Button>
+          </div>
         </div>
         <div className="flex items-center gap-3 mt-3 flex-wrap">
           <Badge variant={prStatusVariant(pr.pr_status)}>{prStatusLabel(pr.pr_status)}</Badge>

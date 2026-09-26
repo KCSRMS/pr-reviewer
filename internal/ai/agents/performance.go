@@ -24,8 +24,9 @@ func (a *PerformanceAgent) Process(ctx context.Context, req mcp.Request) (*mcp.R
 		return nil, err
 	}
 
+	systemPrompt := reviewSystemPrompt(req.Context, ai.RolePerformance)
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: reviewSystemPrompt(req.Context, ai.RolePerformance),
+		SystemPrompt: systemPrompt,
 		UserPrompt:   req.Query,
 		Model:        model,
 	})
@@ -33,19 +34,7 @@ func (a *PerformanceAgent) Process(ctx context.Context, req mcp.Request) (*mcp.R
 		return nil, fmt.Errorf("performance agent: %w", err)
 	}
 	metrics.RecordLLMTokens(model, resp.InputTokens, resp.OutputTokens)
-
-	if err := validateAgentJSON(resp.Content); err != nil {
-		return nil, fmt.Errorf("performance agent: invalid response JSON: %w", err)
-	}
-
-	return &mcp.Response{
-		Content: resp.Content,
-		Metadata: map[string]any{
-			"input_tokens":  resp.InputTokens,
-			"output_tokens": resp.OutputTokens,
-			"provider":      provider.Name(),
-		},
-	}, nil
+	return agentResult("performance", resp.Content, systemPrompt, provider.Name(), resp.InputTokens, resp.OutputTokens, validateAgentJSON(resp.Content))
 }
 
 func (a *PerformanceAgent) resolveProvider(req mcp.Request) (llm.Provider, string, error) {

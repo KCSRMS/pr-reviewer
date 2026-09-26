@@ -1,6 +1,11 @@
 package agents
 
-import "github.com/Astraxx04/pr-reviewer/internal/ai"
+import (
+	"fmt"
+
+	"github.com/Astraxx04/pr-reviewer/internal/ai"
+	"github.com/Astraxx04/pr-reviewer/internal/ai/mcp"
+)
 
 // suggestionRules extends an agent's JSON comment schema with two optional
 // fields so the model can propose an exact, one-click-applicable fix. It is
@@ -45,4 +50,20 @@ func withSuggestionRules(systemPrompt string, reqCtx map[string]any) string {
 		return systemPrompt + suggestionRules
 	}
 	return systemPrompt
+}
+
+func agentResult(agentName, content, systemPrompt, provider string, inputTokens, outputTokens int, validateErr error) (*mcp.Response, error) {
+	resp := &mcp.Response{
+		Content: content,
+		Metadata: map[string]any{
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
+			"provider":      provider,
+			"system_prompt": systemPrompt,
+		},
+	}
+	if validateErr != nil {
+		return resp, fmt.Errorf("%s agent: invalid response JSON: %w", agentName, validateErr)
+	}
+	return resp, nil
 }

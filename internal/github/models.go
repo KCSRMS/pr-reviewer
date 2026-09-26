@@ -40,6 +40,8 @@ type FileDiff struct {
 	Patch     string `json:"patch"`  // The diff patch
 	Additions int    `json:"additions"`
 	Deletions int    `json:"deletions"`
+	// PatchSource is where Patch came from: list_files, raw_diff, or unavailable.
+	PatchSource string `json:"patch_source,omitempty"`
 }
 
 // ReviewComment represents a comment to be posted on a PR.

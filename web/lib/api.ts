@@ -212,6 +212,10 @@ export function requestReReview(token: string, owner: string, repo: string, numb
 export function getPRDiff(token: string, owner: string, repo: string, number: number) {
   return apiFetch<FileDiff[]>(`/api/prs/${owner}/${repo}/${number}/diff`, { token });
 }
+export function getPRDebug(token: string, owner: string, repo: string, number: number, reviewId?: number) {
+  const q = reviewId ? `?review_id=${reviewId}` : "";
+  return apiFetch<PRDebug>(`/api/prs/${owner}/${repo}/${number}/debug${q}`, { token });
+}
 
 // --- system metrics ---
 export function getSystemMetrics(token: string) {
@@ -662,6 +666,45 @@ export interface FileDiff {
   patch: string;
   additions: number;
   deletions: number;
+  patch_source?: string;
+}
+
+export interface PRDebugFile {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch_bytes: number;
+  patch_source: string;
+}
+
+export interface PRDebugAgent {
+  name: string;
+  system_prompt: string;
+  response?: string;
+  error?: string;
+}
+
+export interface PRDebugTrace {
+  files: PRDebugFile[];
+  diff_truncated: boolean;
+  omitted_files?: string[];
+  user_prompt: string;
+  agents: PRDebugAgent[];
+}
+
+export interface PRDebugReview {
+  id: number;
+  status: string;
+  score: number;
+  created_at: string;
+  has_trace?: boolean;
+  trace?: PRDebugTrace | null;
+}
+
+export interface PRDebug {
+  reviews: PRDebugReview[];
+  review: PRDebugReview | null;
 }
 
 export interface Repo {

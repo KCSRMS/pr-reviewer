@@ -118,6 +118,7 @@ type Review struct {
 	InputTokens  int
 	OutputTokens int
 	LatencyMS    int64
+	Trace        datatypes.JSON `gorm:"type:jsonb"`
 	CreatedAt    time.Time
 
 	Comments    []ReviewComment `gorm:"foreignKey:ReviewID"`

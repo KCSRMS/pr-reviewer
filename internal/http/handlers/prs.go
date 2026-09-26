@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -205,6 +206,7 @@ func (h *PRHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// All reviews in chronological order (for score history)
 	var reviews []models.Review
 	h.db.WithContext(r.Context()).
+		Omit("Trace").
 		Preload("Comments").
 		Preload("Assignments").
 		Where("pr_id = ?", pr.ID).
@@ -377,4 +379,90 @@ func (h *PRHandler) ReReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true})
+}
+
+// Debug returns the stored review trace: files sent to the model, the user
+// prompt, and each agent's system prompt and response. It is loaded only when
+// the PR page opens the debug sidebar.
+func (h *PRHandler) Debug(w http.ResponseWriter, r *http.Request) {
+	owner := r.PathValue("owner")
+	repoName := r.PathValue("repo")
+	number, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil || owner == "" || repoName == "" {
+		writeError(w, http.StatusBadRequest, "invalid parameters")
+		return
+	}
+
+	var repo models.Repository
+	if err := h.db.WithContext(r.Context()).
+		Where("owner = ? AND name = ?", owner, repoName).
+		First(&repo).Error; err != nil {
+		writeError(w, http.StatusNotFound, "repository not found")
+		return
+	}
+	var pr models.PullRequest
+	if err := h.db.WithContext(r.Context()).
+		Where("repo_id = ? AND number = ?", repo.ID, number).
+		First(&pr).Error; err != nil {
+		writeError(w, http.StatusNotFound, "pull request not found")
+		return
+	}
+
+	type reviewIndex struct {
+		ID        uint      `json:"id"`
+		Status    string    `json:"status"`
+		Score     int       `json:"score"`
+		CreatedAt time.Time `json:"created_at"`
+		HasTrace  bool      `json:"has_trace"`
+	}
+	var reviews []reviewIndex
+	if err := h.db.WithContext(r.Context()).
+		Model(&models.Review{}).
+		Select("id, status, score, created_at, (trace IS NOT NULL) AS has_trace").
+		Where("pr_id = ?", pr.ID).
+		Order("created_at asc").
+		Scan(&reviews).Error; err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list reviews")
+		return
+	}
+
+	type reviewDebug struct {
+		ID        uint            `json:"id"`
+		Status    string          `json:"status"`
+		Score     int             `json:"score"`
+		CreatedAt time.Time       `json:"created_at"`
+		Trace     json.RawMessage `json:"trace"`
+	}
+	var selected *reviewDebug
+	if len(reviews) > 0 {
+		id := reviews[len(reviews)-1].ID
+		if raw := r.URL.Query().Get("review_id"); raw != "" {
+			n, convErr := strconv.Atoi(raw)
+			if convErr != nil || n <= 0 {
+				writeError(w, http.StatusBadRequest, "invalid review_id")
+				return
+			}
+			id = uint(n)
+		}
+		var row models.Review
+		if err := h.db.WithContext(r.Context()).
+			Select("id", "status", "score", "created_at", "trace").
+			Where("pr_id = ? AND id = ?", pr.ID, id).
+			First(&row).Error; err != nil {
+			writeError(w, http.StatusNotFound, "review not found")
+			return
+		}
+		selected = &reviewDebug{
+			ID: row.ID, Status: row.Status, Score: row.Score, CreatedAt: row.CreatedAt,
+			Trace: json.RawMessage(row.Trace),
+		}
+		if len(row.Trace) == 0 {
+			selected.Trace = nil
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"reviews": reviews,
+		"review":  selected,
+	})
 }

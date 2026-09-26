@@ -130,12 +130,12 @@ Custom rule violations already found in this diff (include these as comments):
 {{- end}}
 {{- if .DiffTruncated}}
 
-NOTE: This diff exceeded the maximum allowed size. Review is based on file names and PR description only. Do not flag specific line numbers.
-{{- else}}
+NOTE: This diff exceeded the maximum allowed size. The changes below are the files that fit. These files were omitted and were not reviewed: {{.OmittedFiles}}
+Do not flag specific lines in omitted files.
+{{- end}}
 
 Changes:
-{{.Diff}}
-{{- end}}`
+{{.Diff}}`
 )
 
 // Render substitutes template variables using Go's text/template.

@@ -11,6 +11,35 @@ type ReviewResult struct {
 	Score        int // 0-100 quality score
 	InputTokens  int
 	OutputTokens int
+	Trace        *ReviewTrace
+}
+
+// ReviewTrace is the debug record of one review: which files were sent and
+// what each agent was asked and answered. Prompt and response text are capped.
+type ReviewTrace struct {
+	Files         []TraceFile  `json:"files"`
+	DiffTruncated bool         `json:"diff_truncated"`
+	OmittedFiles  []string     `json:"omitted_files,omitempty"`
+	UserPrompt    string       `json:"user_prompt"`
+	Agents        []TraceAgent `json:"agents"`
+}
+
+// TraceFile describes one file included in the prompt.
+type TraceFile struct {
+	Path        string `json:"path"`
+	Status      string `json:"status"`
+	Additions   int    `json:"additions"`
+	Deletions   int    `json:"deletions"`
+	PatchBytes  int    `json:"patch_bytes"`
+	PatchSource string `json:"patch_source"`
+}
+
+// TraceAgent is one agent's system prompt and raw response.
+type TraceAgent struct {
+	Name         string `json:"name"`
+	SystemPrompt string `json:"system_prompt"`
+	Response     string `json:"response,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 // AgentConfig holds per-agent provider overrides stored in Repository.Config.
@@ -36,7 +65,8 @@ type AnalysisRequest struct {
 	// New fields for Section 8 features:
 	FalsePositivePatterns []string // comment bodies previously marked as false positives
 	CustomViolations      []string // pre-formatted violations from .pr-reviewer.yml
-	DiffTruncated         bool     // true if diff exceeded max_diff_lines and was dropped
+	DiffTruncated         bool     // true when some files were omitted for max_diff_lines
+	OmittedFiles          []string // filenames left out of Diff because of that cap
 	PRTemplate            string   // content of .github/pull_request_template.md
 	RepoRules             string   // AGENTS.md and copilot instructions, when present
 	ExistingComments      string   // inline review comments already on the PR

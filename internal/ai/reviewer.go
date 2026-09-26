@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -106,6 +107,7 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 		"FalsePositives":   fpStr,
 		"CustomViolations": violationsStr,
 		"DiffTruncated":    req.DiffTruncated,
+		"OmittedFiles":     strings.Join(req.OmittedFiles, ", "),
 	})
 
 	// Core agents always run; optional agents run only when a repo opts in via
@@ -162,18 +164,29 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 	var combined ReviewResult
 	var primarySummary string
 	var otherSummaries []string
+	var traceAgents []TraceAgent
 
 	for res := range ch {
+		agentTrace := TraceAgent{Name: res.name}
+		if res.resp != nil {
+			if prompt, ok := res.resp.Metadata["system_prompt"].(string); ok {
+				agentTrace.SystemPrompt = capTraceText(prompt)
+			}
+			agentTrace.Response = capTraceText(res.resp.Content)
+			if in, ok := res.resp.Metadata["input_tokens"].(int); ok {
+				combined.InputTokens += in
+			}
+			if out, ok := res.resp.Metadata["output_tokens"].(int); ok {
+				combined.OutputTokens += out
+			}
+		}
 		if res.err != nil {
+			agentTrace.Error = res.err.Error()
+			traceAgents = append(traceAgents, agentTrace)
 			r.log.Error("Agent dispatch failed", "agent", res.name, "error", res.err)
 			continue
 		}
-		if in, ok := res.resp.Metadata["input_tokens"].(int); ok {
-			combined.InputTokens += in
-		}
-		if out, ok := res.resp.Metadata["output_tokens"].(int); ok {
-			combined.OutputTokens += out
-		}
+		traceAgents = append(traceAgents, agentTrace)
 		parsed, err := parseAgentResponse(res.resp.Content)
 		if err != nil {
 			r.log.Error("Failed to parse agent response", "agent", res.name, "error", err)
@@ -253,6 +266,15 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 			suggestionCount++
 		}
 	}
+	sort.Slice(traceAgents, func(i, j int) bool { return traceAgents[i].Name < traceAgents[j].Name })
+	combined.Trace = &ReviewTrace{
+		Files:         traceFiles(req.Diff),
+		DiffTruncated: req.DiffTruncated,
+		OmittedFiles:  req.OmittedFiles,
+		UserPrompt:    capTraceText(prompt),
+		Agents:        traceAgents,
+	}
+
 	span.SetAttributes(
 		attribute.Int("review.comments", len(combined.Comments)),
 		attribute.Int("review.score", combined.Score),
@@ -407,8 +429,34 @@ func formatDiff(files []github.FileDiff) string {
 		fmt.Fprintf(&sb, "--- %s (%s +%d -%d)\n", f.Filename, f.Status, f.Additions, f.Deletions)
 		if f.Patch != "" {
 			sb.WriteString(f.Patch)
+		} else if f.Status != "removed" {
+			sb.WriteString("(patch text unavailable; this file changed but its diff was not returned)\n")
 		}
 		sb.WriteString("\n\n")
 	}
 	return sb.String()
+}
+
+const traceTextCap = 400_000
+
+func capTraceText(s string) string {
+	if len(s) <= traceTextCap {
+		return s
+	}
+	return s[:traceTextCap] + "\n\n[truncated]"
+}
+
+func traceFiles(files []github.FileDiff) []TraceFile {
+	out := make([]TraceFile, 0, len(files))
+	for _, f := range files {
+		out = append(out, TraceFile{
+			Path:        f.Filename,
+			Status:      f.Status,
+			Additions:   f.Additions,
+			Deletions:   f.Deletions,
+			PatchBytes:  len(f.Patch),
+			PatchSource: f.PatchSource,
+		})
+	}
+	return out
 }

@@ -201,6 +201,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		api.HandleFunc("GET /api/prs", cfg.PRHandler.List)
 		api.HandleFunc("GET /api/prs/{owner}/{repo}/{number}", cfg.PRHandler.Get)
 		api.HandleFunc("GET /api/prs/{owner}/{repo}/{number}/diff", cfg.PRHandler.Diff)
+		api.HandleFunc("GET /api/prs/{owner}/{repo}/{number}/debug", cfg.PRHandler.Debug)
 		api.HandleFunc("POST /api/prs/{owner}/{repo}/{number}/re-review", cfg.PRHandler.ReReview)
 	}
 	if cfg.NotificationHandler != nil {
