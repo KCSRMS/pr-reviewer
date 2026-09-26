@@ -42,6 +42,7 @@ type RouterConfig struct {
 	EventsHandler          *handlers.EventsHandler
 	AuditHandler           *handlers.AuditHandler
 	RetentionHandler       *handlers.RetentionHandler
+	ReviewPromptHandler    *handlers.ReviewPromptHandler
 	SSOHandler             *handlers.SSOHandler
 	APITokenHandler        *handlers.APITokenHandler
 	InviteHandler          *handlers.InviteHandler
@@ -230,6 +231,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		adminFunc("GET /api/settings/retention", cfg.RetentionHandler.Get)
 		adminFunc("PUT /api/settings/retention", cfg.RetentionHandler.Put)
 		adminFunc("DELETE /api/users/{login}/data", cfg.RetentionHandler.EraseUser)
+	}
+	if cfg.ReviewPromptHandler != nil {
+		adminFunc("GET /api/settings/review-prompt", cfg.ReviewPromptHandler.Get)
+		adminFunc("PUT /api/settings/review-prompt", cfg.ReviewPromptHandler.Put)
 	}
 	if cfg.SSOHandler != nil {
 		adminFunc("GET /api/settings/sso", cfg.SSOHandler.GetConfig)

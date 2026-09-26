@@ -63,6 +63,9 @@ func (m *mockGHClient) PostReview(_ context.Context, _, _ string, _ int, _ *gh.R
 func (m *mockGHClient) GetReviewCommentsByReview(_ context.Context, _, _ string, _ int, _ int64) ([]gh.ReviewCommentRef, error) {
 	return nil, nil
 }
+func (m *mockGHClient) ListReviewComments(_ context.Context, _, _ string, _, _ int) ([]gh.ReviewCommentRef, error) {
+	return nil, nil
+}
 func (m *mockGHClient) PostReviewCommentReply(_ context.Context, _, _ string, _ int, _ int64, _ string) error {
 	return nil
 }

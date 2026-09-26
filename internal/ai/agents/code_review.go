@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Astraxx04/pr-reviewer/internal/ai"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/llm"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/mcp"
 	"github.com/Astraxx04/pr-reviewer/internal/metrics"
@@ -52,7 +53,7 @@ func (a *CodeReviewAgent) Process(ctx context.Context, req mcp.Request) (*mcp.Re
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: withSuggestionRules(codeReviewSystem, req.Context),
+		SystemPrompt: reviewSystemPrompt(req.Context, ai.RolePrimary, codeReviewSystem),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

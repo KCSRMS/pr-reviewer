@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Astraxx04/pr-reviewer/internal/ai"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/llm"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/mcp"
 	"github.com/Astraxx04/pr-reviewer/internal/metrics"
@@ -52,7 +53,7 @@ func (a *PerformanceAgent) Process(ctx context.Context, req mcp.Request) (*mcp.R
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: withSuggestionRules(performanceSystem, req.Context),
+		SystemPrompt: reviewSystemPrompt(req.Context, ai.RolePerformance, performanceSystem),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

@@ -101,6 +101,8 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 		"RAGContext":       ragContext,
 		"TicketContext":    req.TicketContext,
 		"PRTemplate":       req.PRTemplate,
+		"RepoRules":        req.RepoRules,
+		"ExistingComments": req.ExistingComments,
 		"FalsePositives":   fpStr,
 		"CustomViolations": violationsStr,
 		"DiffTruncated":    req.DiffTruncated,
@@ -129,6 +131,9 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 			agentCtx := map[string]interface{}{}
 			if req.AutoFixEnabled {
 				agentCtx["suggestions_enabled"] = true
+			}
+			if req.ReviewPolicy != "" {
+				agentCtx["review_policy"] = req.ReviewPolicy
 			}
 			if ac, ok := req.RepoConfig[agentName]; ok {
 				if ac.ProviderID != "" {
@@ -199,7 +204,7 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 	for _, raw := range rawResults {
 		if combined.Summary == "" {
 			combined.Summary = raw.parsed.Summary
-		} else {
+		} else if raw.parsed.Summary != "" {
 			combined.Summary += " | " + raw.parsed.Summary
 		}
 		for _, c := range raw.parsed.Comments {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Astraxx04/pr-reviewer/internal/ai"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/llm"
 	"github.com/Astraxx04/pr-reviewer/internal/ai/mcp"
 	"github.com/Astraxx04/pr-reviewer/internal/metrics"
@@ -49,7 +50,7 @@ func (a *SecurityAgent) Process(ctx context.Context, req mcp.Request) (*mcp.Resp
 	}
 
 	resp, err := provider.Complete(ctx, llm.CompletionRequest{
-		SystemPrompt: withSuggestionRules(securitySystem, req.Context),
+		SystemPrompt: reviewSystemPrompt(req.Context, ai.RoleSecurity, securitySystem),
 		UserPrompt:   req.Query,
 		Model:        model,
 	})

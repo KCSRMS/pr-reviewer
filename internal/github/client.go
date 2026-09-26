@@ -27,6 +27,9 @@ type Client interface {
 	RequestReviewers(ctx context.Context, owner, repo string, number int, reviewers []string) error
 	// GetReviewCommentsByReview lists the inline comments belonging to a specific review.
 	GetReviewCommentsByReview(ctx context.Context, owner, repo string, number int, reviewID int64) ([]ReviewCommentRef, error)
+	// ListReviewComments lists inline review comments already on the pull request,
+	// newest first. A limit above zero stops once that many non-empty bodies are collected.
+	ListReviewComments(ctx context.Context, owner, repo string, number, limit int) ([]ReviewCommentRef, error)
 	// PostReviewCommentReply posts a reply inside an existing review comment thread.
 	PostReviewCommentReply(ctx context.Context, owner, repo string, number int, inReplyTo int64, body string) error
 	// GetFileContent fetches a single file's content from the repository.
@@ -216,6 +219,43 @@ func (c *clientImpl) GetReviewCommentsByReview(ctx context.Context, owner, repo 
 				Path:   c.GetPath(),
 				Line:   c.GetLine(),
 			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return all, nil
+}
+
+func (c *clientImpl) ListReviewComments(ctx context.Context, owner, repo string, number, limit int) ([]ReviewCommentRef, error) {
+	opts := &github.PullRequestListCommentsOptions{
+		Sort:        "created",
+		Direction:   "desc",
+		ListOptions: github.ListOptions{PerPage: 100},
+	}
+	var all []ReviewCommentRef
+	for {
+		start := time.Now()
+		comments, resp, err := c.client.PullRequests.ListComments(ctx, owner, repo, number, opts)
+		logger.ExternalCall(ctx, "github", "PullRequests.ListComments", start, err, "owner", owner, "repo", repo, "pr", number)
+		if err != nil {
+			return nil, fmt.Errorf("github: list pull request comments: %w", err)
+		}
+		for _, c := range comments {
+			if strings.TrimSpace(c.GetBody()) == "" {
+				continue
+			}
+			all = append(all, ReviewCommentRef{
+				ID:     c.GetID(),
+				Body:   c.GetBody(),
+				Author: c.GetUser().GetLogin(),
+				Path:   c.GetPath(),
+				Line:   c.GetLine(),
+			})
+			if limit > 0 && len(all) >= limit {
+				return all, nil
+			}
 		}
 		if resp.NextPage == 0 {
 			break
