@@ -24,14 +24,17 @@ type ReviewTrace struct {
 	Agents        []TraceAgent `json:"agents"`
 }
 
-// TraceFile describes one file included in the prompt.
+// TraceFile describes how one changed file was covered.
 type TraceFile struct {
-	Path        string `json:"path"`
-	Status      string `json:"status"`
-	Additions   int    `json:"additions"`
-	Deletions   int    `json:"deletions"`
-	PatchBytes  int    `json:"patch_bytes"`
-	PatchSource string `json:"patch_source"`
+	Path          string   `json:"path"`
+	Status        string   `json:"status"`
+	Additions     int      `json:"additions"`
+	Deletions     int      `json:"deletions"`
+	PatchBytes    int      `json:"patch_bytes"`
+	PatchSource   string   `json:"patch_source"`
+	Class         string   `json:"class,omitempty"`          // review | summarize | ignore
+	PatchIncluded bool     `json:"patch_included,omitempty"` // raw patch was sent to a model
+	Agents        []string `json:"agents,omitempty"`         // calls that received this file
 }
 
 // TraceAgent is one agent's system prompt and raw response.
@@ -63,14 +66,15 @@ type AnalysisRequest struct {
 	TicketContext string // formatted Jira ticket summaries for injection into the prompt
 
 	// New fields for Section 8 features:
-	FalsePositivePatterns []string // comment bodies previously marked as false positives
-	CustomViolations      []string // pre-formatted violations from .pr-reviewer.yml
-	DiffTruncated         bool     // true when some files were omitted for max_diff_lines
-	OmittedFiles          []string // filenames left out of Diff because of that cap
-	PRTemplate            string   // content of .github/pull_request_template.md
-	RepoRules             string   // AGENTS.md and copilot instructions, when present
-	ExistingComments      string   // inline review comments already on the PR
-	ReviewPolicy          string   // editable system policy; empty uses the built-in default
-	ConsensusThreshold    int      // 0=disabled; N=require N agents to agree for p2/p3
-	AutoFixEnabled        bool     // when true, agents may propose one-click-applicable suggestions
+	FalsePositivePatterns []string          // comment bodies previously marked as false positives
+	CustomViolations      []string          // pre-formatted violations from .pr-reviewer.yml
+	DiffTruncated         bool              // true when some files were omitted for max_diff_lines
+	OmittedFiles          []string          // filenames left out of Diff because of that cap
+	Ignored               []github.FileDiff // files matched by .pr-reviewer-ignore; recorded in the trace only
+	PRTemplate            string            // content of .github/pull_request_template.md
+	RepoRules             string            // AGENTS.md and copilot instructions, when present
+	ExistingComments      string            // inline review comments already on the PR
+	ReviewPolicy          string            // editable system policy; empty uses the built-in default
+	ConsensusThreshold    int               // 0=disabled; N=require N agents to agree for p2/p3
+	AutoFixEnabled        bool              // when true, agents may propose one-click-applicable suggestions
 }

@@ -19,11 +19,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// optionalAgents are review agents that run only when a repo opts in via its
-// per-repo config (agents.<name>.enabled = true). Core agents (code-review,
-// security) are not listed here — they always run.
-var optionalAgents = []string{"performance", "database"}
-
 type Service interface {
 	Review(ctx context.Context, req AnalysisRequest) (*ReviewResult, error)
 	// Explain provides a detailed explanation for a specific AI review comment.
@@ -52,6 +47,11 @@ func NewReviewer(
 		retriever:    retriever,
 		orchestrator: orchestrator,
 	}
+}
+
+type rawResult struct {
+	name   string
+	parsed *agentJSON
 }
 
 type agentJSON struct {
@@ -94,77 +94,54 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 	// Format false positives and custom violations for prompt
 	fpStr := strings.Join(req.FalsePositivePatterns, "\n")
 	violationsStr := strings.Join(req.CustomViolations, "\n")
-
-	prompt := ReviewPrompt.Render(map[string]interface{}{
-		"Title":            req.Title,
-		"Body":             req.Body,
-		"Diff":             formatDiff(req.Diff),
-		"RAGContext":       ragContext,
-		"TicketContext":    req.TicketContext,
-		"PRTemplate":       req.PRTemplate,
-		"RepoRules":        req.RepoRules,
-		"ExistingComments": req.ExistingComments,
-		"FalsePositives":   fpStr,
-		"CustomViolations": violationsStr,
-		"DiffTruncated":    req.DiffTruncated,
-		"OmittedFiles":     strings.Join(req.OmittedFiles, ", "),
-	})
-
-	// Core agents always run; optional agents run only when a repo opts in via
-	// its per-repo config (agents.<name>.enabled = true).
-	agentNames := []string{"code-review", "security"}
-	for _, name := range optionalAgents {
-		if ac, ok := req.RepoConfig[name]; ok && ac.Enabled {
-			agentNames = append(agentNames, name)
-		}
+	calls, traceFileList := planReviewCalls(req, ragContext, fpStr, violationsStr)
+	span.SetAttributes(attribute.Int("review.calls", len(calls)))
+	if len(calls) == 0 {
+		return &ReviewResult{
+			Summary: "No reviewable changes.",
+			Score:   100,
+			Trace: &ReviewTrace{
+				Files:         traceFileList,
+				DiffTruncated: req.DiffTruncated,
+				OmittedFiles:  req.OmittedFiles,
+			},
+		}, nil
 	}
+
 	type result struct {
 		name string
 		resp *mcp.Response
 		err  error
 	}
-	ch := make(chan result, len(agentNames))
+	ch := make(chan result, len(calls))
 
 	var wg sync.WaitGroup
-	for _, name := range agentNames {
+	for _, call := range calls {
 		wg.Add(1)
-		go func(agentName string) {
+		go func(call reviewCall) {
 			defer wg.Done()
-			agentCtx := map[string]interface{}{}
-			if req.AutoFixEnabled {
-				agentCtx["suggestions_enabled"] = true
-			}
-			if req.ReviewPolicy != "" {
-				agentCtx["review_policy"] = req.ReviewPolicy
-			}
-			if ac, ok := req.RepoConfig[agentName]; ok {
-				if ac.ProviderID != "" {
-					agentCtx["provider_id"] = ac.ProviderID
-				}
-				if ac.Model != "" {
-					agentCtx["model"] = ac.Model
-				}
-			}
-			resp, err := r.orchestrator.Dispatch(ctx, agentName, mcp.Request{
-				Query:   prompt,
-				Context: agentCtx,
+			resp, err := r.orchestrator.Dispatch(ctx, call.Agent, mcp.Request{
+				Query:   call.Prompt,
+				Context: agentContext(req, call.Agent),
 			})
-			ch <- result{name: agentName, resp: resp, err: err}
-		}(name)
+			ch <- result{name: call.Name, resp: resp, err: err}
+		}(call)
 	}
 	wg.Wait()
 	close(ch)
 
 	// Buffer all agent results
-	type rawResult struct {
-		name   string
-		parsed *agentJSON
-	}
 	var rawResults []rawResult
 	var combined ReviewResult
 	var primarySummary string
 	var otherSummaries []string
 	var traceAgents []TraceAgent
+	codeReviewCalls := 0
+	for _, call := range calls {
+		if call.Agent == "code-review" {
+			codeReviewCalls++
+		}
+	}
 
 	for res := range ch {
 		agentTrace := TraceAgent{Name: res.name}
@@ -196,8 +173,12 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 		if parsed.Summary == "" {
 			continue
 		}
-		if res.name == "code-review" {
-			primarySummary = parsed.Summary
+		if res.name == "code-review" || strings.HasPrefix(res.name, "code-review#") {
+			if primarySummary == "" {
+				primarySummary = parsed.Summary
+			} else {
+				otherSummaries = append(otherSummaries, parsed.Summary)
+			}
 		} else {
 			otherSummaries = append(otherSummaries, parsed.Summary)
 		}
@@ -214,7 +195,11 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 		Line int
 	}
 	var lineCount map[lineKey]int
-	if req.ConsensusThreshold > 1 {
+	agentsRan := map[string]bool{}
+	for _, call := range calls {
+		agentsRan[call.Agent] = true
+	}
+	if req.ConsensusThreshold > 1 && len(agentsRan) >= req.ConsensusThreshold {
 		lineCount = map[lineKey]int{}
 		for _, raw := range rawResults {
 			seen := map[lineKey]bool{}
@@ -255,6 +240,7 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 		}
 	}
 
+	combined.Comments = dedupeComments(combined.Comments)
 	if req.AutoFixEnabled {
 		combined.Comments = ValidateSuggestions(r.log, combined.Comments, req.Diff)
 	}
@@ -266,12 +252,39 @@ func (r *reviewerImpl) Review(ctx context.Context, req AnalysisRequest) (*Review
 			suggestionCount++
 		}
 	}
+	var promptLog strings.Builder
+	for _, call := range calls {
+		fmt.Fprintf(&promptLog, "===== %s =====\n%s\n\n", call.Name, call.Prompt)
+	}
+	if codeReviewCalls > 1 {
+		merged, mergePrompt, mergeTrace, in, out := r.mergeChunkSummaries(ctx, req, traceFileList, rawResults)
+		promptLog.WriteString("===== merge =====\n")
+		promptLog.WriteString(mergePrompt)
+		if mergeTrace != nil {
+			traceAgents = append(traceAgents, *mergeTrace)
+		}
+		combined.InputTokens += in
+		combined.OutputTokens += out
+		if merged != "" {
+			combined.Summary = merged
+		} else {
+			parts := make([]string, 0, 1+len(otherSummaries))
+			if primarySummary != "" {
+				parts = append(parts, primarySummary)
+			}
+			parts = append(parts, otherSummaries...)
+			if len(parts) > 0 {
+				combined.Summary = strings.Join(parts, "\n\n")
+			}
+		}
+	}
+
 	sort.Slice(traceAgents, func(i, j int) bool { return traceAgents[i].Name < traceAgents[j].Name })
 	combined.Trace = &ReviewTrace{
-		Files:         traceFiles(req.Diff),
+		Files:         traceFileList,
 		DiffTruncated: req.DiffTruncated,
 		OmittedFiles:  req.OmittedFiles,
-		UserPrompt:    capTraceText(prompt),
+		UserPrompt:    capTraceText(promptLog.String()),
 		Agents:        traceAgents,
 	}
 
@@ -446,17 +459,68 @@ func capTraceText(s string) string {
 	return s[:traceTextCap] + "\n\n[truncated]"
 }
 
-func traceFiles(files []github.FileDiff) []TraceFile {
-	out := make([]TraceFile, 0, len(files))
-	for _, f := range files {
-		out = append(out, TraceFile{
-			Path:        f.Filename,
-			Status:      f.Status,
-			Additions:   f.Additions,
-			Deletions:   f.Deletions,
-			PatchBytes:  len(f.Patch),
-			PatchSource: f.PatchSource,
-		})
+func agentContext(req AnalysisRequest, agentName string) map[string]interface{} {
+	agentCtx := map[string]interface{}{}
+	if req.AutoFixEnabled {
+		agentCtx["suggestions_enabled"] = true
 	}
-	return out
+	if req.ReviewPolicy != "" {
+		agentCtx["review_policy"] = req.ReviewPolicy
+	}
+	if ac, ok := req.RepoConfig[agentName]; ok {
+		if ac.ProviderID != "" {
+			agentCtx["provider_id"] = ac.ProviderID
+		}
+		if ac.Model != "" {
+			agentCtx["model"] = ac.Model
+		}
+	}
+	return agentCtx
+}
+
+// mergeChunkSummaries asks the code-review agent for one summary from the
+// partial reviews. The diff is not sent again. Inline comments stay on the
+// partial results.
+func (r *reviewerImpl) mergeChunkSummaries(ctx context.Context, req AnalysisRequest, files []TraceFile, raw []rawResult) (summary, prompt string, trace *TraceAgent, input, output int) {
+	var partials strings.Builder
+	for _, item := range raw {
+		if item.parsed == nil {
+			continue
+		}
+		fmt.Fprintf(&partials, "### %s\n%s\n", item.name, item.parsed.Summary)
+		for _, c := range item.parsed.Comments {
+			fmt.Fprintf(&partials, "- %s:%d %s %s\n", c.Path, c.Line, c.Priority, c.Body)
+		}
+		partials.WriteString("\n")
+	}
+	prompt = buildMergePrompt(req.Title, req.Body, coverageText(files), partials.String())
+	resp, err := r.orchestrator.Dispatch(ctx, "code-review", mcp.Request{
+		Query:   prompt,
+		Context: agentContext(req, "code-review"),
+	})
+	agentTrace := TraceAgent{Name: "merge"}
+	if resp != nil {
+		if sp, ok := resp.Metadata["system_prompt"].(string); ok {
+			agentTrace.SystemPrompt = capTraceText(sp)
+		}
+		agentTrace.Response = capTraceText(resp.Content)
+		if in, ok := resp.Metadata["input_tokens"].(int); ok {
+			input = in
+		}
+		if out, ok := resp.Metadata["output_tokens"].(int); ok {
+			output = out
+		}
+	}
+	if err != nil {
+		agentTrace.Error = err.Error()
+		r.log.Error("merge summary failed", "error", err)
+		return "", prompt, &agentTrace, input, output
+	}
+	parsed, err := parseAgentResponse(resp.Content)
+	if err != nil {
+		agentTrace.Error = err.Error()
+		r.log.Error("merge summary parse failed", "error", err)
+		return "", prompt, &agentTrace, input, output
+	}
+	return parsed.Summary, prompt, &agentTrace, input, output
 }

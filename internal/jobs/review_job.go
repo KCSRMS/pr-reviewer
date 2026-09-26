@@ -131,11 +131,6 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 			_ = json.Unmarshal(dbRepo.Config, &repoConfig)
 		}
 	}
-	maxDiffLines := fullCfg.MaxDiffLines
-	if maxDiffLines == 0 {
-		maxDiffLines = 3000
-	}
-
 	// Post a pending commit status up front so the PR shows the check is running.
 	if fullCfg.CommitStatus.Enabled {
 		w.postCommitStatus(ctx, instClient, args, prCtx.PR.Head.Sha, "pending", "AI review in progress…")
@@ -166,8 +161,10 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 		}
 	}
 
-	// Fetch .pr-reviewer-ignore and filter diff accordingly.
+	// Fetch .pr-reviewer-ignore. Ignored files stay out of the model prompt
+	// and are recorded on the review trace.
 	diff := prCtx.Diff
+	var ignored []gh.FileDiff
 	if ignoreContent, err := instClient.GetFileContent(ctx, args.Owner, args.Repo, ".pr-reviewer-ignore"); err == nil {
 		var ignorePatterns []string
 		for _, line := range strings.Split(ignoreContent, "\n") {
@@ -177,21 +174,17 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 			}
 		}
 		if len(ignorePatterns) > 0 {
-			filtered := diff[:0]
+			var kept []gh.FileDiff
 			for _, f := range diff {
-				if !rules.ShouldIgnore(f.Filename, ignorePatterns) {
-					filtered = append(filtered, f)
+				if rules.ShouldIgnore(f.Filename, ignorePatterns) {
+					ignored = append(ignored, f)
+					continue
 				}
+				kept = append(kept, f)
 			}
-			diff = filtered
+			diff = kept
 		}
 	}
-
-	// Keep every file that fits. The first file is always kept so a single
-	// large change is still reviewed. Later files over the cap are named in
-	// the prompt instead of being silently dropped.
-	diff, omittedFiles := capDiff(diff, maxDiffLines)
-	diffTruncated := len(omittedFiles) > 0
 
 	// Fetch and evaluate .pr-reviewer.yml custom rules.
 	var customViolations []string
@@ -241,8 +234,7 @@ func (w *ReviewWorker) Work(ctx context.Context, job *river.Job[ReviewJobArgs]) 
 		TicketContext:         ticketContext,
 		FalsePositivePatterns: falsePositivePatterns,
 		CustomViolations:      customViolations,
-		DiffTruncated:         diffTruncated,
-		OmittedFiles:          omittedFiles,
+		Ignored:               ignored,
 		PRTemplate:            prTemplate,
 		RepoRules:             repoRules,
 		ExistingComments:      existingComments,
@@ -556,29 +548,6 @@ func (w *ReviewWorker) applyLabels(ctx context.Context, client gh.Client, args R
 		return err
 	}
 	return client.AddLabelsToIssue(ctx, args.Owner, args.Repo, args.Number, []string{labelName})
-}
-
-// capDiff keeps files until maxLines of patch text are used. The first file is
-// always included. Filenames that do not fit are returned so the prompt can
-// say they were not reviewed.
-func capDiff(diff []gh.FileDiff, maxLines int) (kept []gh.FileDiff, omitted []string) {
-	if maxLines <= 0 {
-		return diff, nil
-	}
-	used := 0
-	for i, f := range diff {
-		lines := strings.Count(f.Patch, "\n")
-		if f.Patch != "" && !strings.HasSuffix(f.Patch, "\n") {
-			lines++
-		}
-		if i > 0 && used+lines > maxLines {
-			omitted = append(omitted, f.Filename)
-			continue
-		}
-		kept = append(kept, f)
-		used += lines
-	}
-	return kept, omitted
 }
 
 // postCommitStatus posts a GitHub commit status for branch-protection use (non-fatal).
