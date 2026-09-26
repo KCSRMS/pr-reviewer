@@ -195,6 +195,9 @@ function ReviewDebugSidebar({
                         <div className="font-mono text-xs break-all">{f.path}</div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           {f.status} +{f.additions} -{f.deletions} · {f.patch_bytes} bytes · {f.patch_source || "unknown"}
+                          {f.class ? ` · ${f.class}` : ""}
+                          {f.class ? ` · patch ${f.patch_included ? "sent" : "not sent"}` : ""}
+                          {f.agents && f.agents.length > 0 ? ` · ${f.agents.join(", ")}` : ""}
                         </div>
                       </li>
                     ))}

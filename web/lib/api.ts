@@ -676,6 +676,9 @@ export interface PRDebugFile {
   deletions: number;
   patch_bytes: number;
   patch_source: string;
+  class?: string;
+  patch_included?: boolean;
+  agents?: string[];
 }
 
 export interface PRDebugAgent {
